@@ -145,7 +145,7 @@ details.sec > summary .tag { margin-left: auto; font: 11px var(--f-mono); color:
 .toolbar .fld { min-width: 120px; }
 .toolbar .grow { flex: 1; }
 .paper { background: var(--paper); color: var(--paper-fg); border-radius: 6px; border: 1px solid var(--line); position: relative; overflow: hidden; }
-.paper svg { display: block; width: 100%; height: auto; }
+.paper > svg { display: block; width: 100%; height: auto; }
 .status { font: 12px var(--f-mono); color: var(--muted); }
 .progress { height: 3px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
 .progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
@@ -234,7 +234,7 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
 <header class="topbar">
   <button class="brand" id="brandHome" title="Start over: clears the loaded data and resets everything (Undo brings it back)">
     <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10" fill="#5a3fa6"/><path d="M7 31.5H33" stroke="#fff" stroke-opacity=".35" stroke-width="1.4" stroke-linecap="round"/><path d="M7 29.5C14 29.5 15.5 28.5 18 22.5S22.5 10.5 33 10.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="9" cy="29.3" r="2.1" fill="#f48fb1"/><circle cx="16.6" cy="25.6" r="2.1" fill="#f48fb1"/><circle cx="20" cy="17.2" r="2.1" fill="#f48fb1"/><circle cx="25.5" cy="12" r="2.1" fill="#f48fb1"/><circle cx="31.5" cy="10.6" r="2.1" fill="#f48fb1"/></svg>
-    <span class="names"><h1>Sigmoid <span class="ver">v1.2</span></h1><span class="tagline">Bacterial Growth Analysis</span></span>
+    <span class="names"><h1>Sigmoid <span class="ver">v1.3</span></h1><span class="tagline">Bacterial Growth Analysis</span></span>
   </button>
   <div class="filechip" id="fileChip">no data loaded</div>
   <div class="spacer"></div>
@@ -253,6 +253,7 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
         <button data-x="csv-wells">Well parameters (.csv)</button>
         <button data-x="csv-groups">Group summary (.csv)</button>
         <button data-x="csv-data">Blank-corrected OD (.csv)</button>
+        <button data-x="csv-fl">Corrected fluorescence and F/OD (.csv)</button>
         <hr>
         <button data-x="svg">Current chart as SVG (vector)</button>
         <button data-x="png">Current chart as PNG (300 dpi)</button>
@@ -272,7 +273,8 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
       <div class="sec-body">
         <div class="drop" id="railDrop"><b>Drop a file here</b><span>.xlsx · .csv · .txt · project .json</span></div>
         <div id="loadMsg"></div>
-        <label class="fld"><span>Measurement block</span><select id="blockSel" disabled></select></label>
+        <label class="fld"><span>Growth read (OD)</span><select id="blockSel" disabled></select></label>
+        <label class="fld hidden" id="flSelWrap"><span>Fluorescence read <i class="help" title="Analysed together with the OD read. Choose (none) to analyse OD only.">?</i></span><select id="flSel"></select></label>
         <label class="fld"><span>Time unit in file <i class="help" title="Auto works for Gen5 (h:mm:ss), Tecan (seconds) and most tables. Change it if the time axis looks wrong.">?</i></span>
           <select id="timeUnit"><option value="auto">Auto-detect</option><option value="h">Hours</option><option value="min">Minutes</option><option value="s">Seconds</option><option value="d">Days (Excel fraction)</option></select></label>
       </div>
@@ -338,6 +340,21 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
       </div>
     </details>
 
+    <details class="sec hidden" id="flSec" open>
+      <summary>Fluorescence <span class="tag" id="flTag"></span></summary>
+      <div class="sec-body">
+        <p class="note" style="margin:0">Fluorescence is corrected with the control wells set on the Plate tab: <b>Dye blank</b> (medium + dye), <b>Cells, no dye</b> and <b>Blank (medium)</b>. Change a group's role there if the automatic guess is wrong.</p>
+        <label class="chk"><input type="checkbox" id="s_autofl"> Subtract cell autofluorescence (uses "Cells, no dye" wells)</label>
+        <div class="row2">
+          <label class="fld"><span>Lowest usable F <i class="help" title="Corrected fluorescence below this is too close to background for ln(F). Empty = automatic (2% of the typical maximum).">?</i></span><input type="number" id="s_fMin" step="10" min="0" placeholder="auto"></label>
+          <label class="fld"><span>Analyse F from (h) <i class="help" title="Skip the first readings if the dye is still settling (fluorescence drifts down at the start).">?</i></span><input type="number" id="s_fStart" step="0.25" min="0" placeholder="start"></label>
+        </div>
+        <label class="fld"><span>F/OD at these OD values</span><input type="text" id="s_fodLevels" placeholder="0.3, 0.6, 1.0"></label>
+        <label class="fld"><span>Highest reliable OD <i class="help" title="Above about OD 1 a plate reader no longer reads OD in proportion to cell number, and dense cultures can absorb some fluorescence. The F-against-OD slope only uses OD below this value, and charts shade the region above it.">?</i></span><input type="number" id="s_odLinMax" step="0.1" min="0.1"></label>
+        <label class="fld"><span>Fluorescence axis label</span><input type="text" id="d_flab"></label>
+      </div>
+    </details>
+
     <details class="sec">
       <summary>Chart style</summary>
       <div class="sec-body">
@@ -355,7 +372,7 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
           </select></label>
         <label class="chk"><input type="checkbox" id="d_wells"> Show individual wells</label>
         <label class="chk"><input type="checkbox" id="d_points" checked> Show data points</label>
-        <label class="chk"><input type="checkbox" id="d_blanks"> Include blank groups in charts</label>
+        <label class="chk"><input type="checkbox" id="d_blanks"> Include control groups (blanks, no-dye) in charts</label>
         <label class="chk"><input type="checkbox" id="d_legend" checked> Legend</label>
         <div class="row2">
           <label class="fld"><span>Line width</span><input type="number" id="d_lw" step="0.25" min="0.5" max="6"></label>
@@ -851,19 +868,56 @@ const Blocks = (() => {
     return [];
   }
 
+  /* Instrument settings written above the data (Tecan Spark / i-control style):
+     "Name | Nile Red" followed by "Excitation wavelength … 561" etc.     */
+  function readMeta(rows, label) {
+    const meta = {};
+    const cellsOf = r => (rows[r] || []).filter(v => v != null && v !== '');
+    for (let r = 0; r < Math.min(rows.length, 400); r++) {
+      const c = cellsOf(r);
+      if (!c.length) continue;
+      const k = String(c[0]);
+      if (/^device\s*:/i.test(k) && !meta.device) meta.device = (k.split(':')[1] || '').trim() || String(c[1] || '');
+      if (/^plate$/i.test(k) && c[1] && !meta.plate) meta.plate = String(c[1]).replace(/[\[\]]/g, '').replace(/\s+-\s+/, ' – ').trim();
+    }
+    for (let r = 0; r < Math.min(rows.length, 400); r++) {
+      const row = rows[r] || [];
+      if (!(String(row[0] || '').trim() === 'Name' && String(row[1] || '').trim() === String(label).trim())) continue;
+      for (let q = r - 1; q >= Math.max(0, r - 2); q--) { const c = cellsOf(q); if (c.length && /^mode$/i.test(String(c[0]))) meta.mode = String(c[1] || ''); }
+      for (let q = r + 1; q < Math.min(rows.length, r + 30); q++) {
+        const c = cellsOf(q); if (!c.length) continue;
+        const k = String(c[0]), v = c[c.length - 1];
+        if (/^mode$/i.test(k)) break;
+        if (/^excitation wavelength/i.test(k)) meta.ex = v;
+        else if (/^emission wavelength/i.test(k)) meta.em = v;
+        else if (/^(measurement )?wavelength|^measurement wavelength/i.test(k)) meta.wavelength = v;
+        else if (/^gain/i.test(k)) meta.gain = v;
+      }
+      break;
+    }
+    return meta;
+  }
+
   function findAll(sheets, unitOverride) {
     const blocks = [];
     for (const sh of sheets) {
       let b = findColumnBlocks(sh.rows, sh.name, unitOverride);
       if (!b.length) b = findRowBlocks(sh.rows, sh.name, unitOverride);
       if (!b.length) b = findPlainBlock(sh.rows, sh.name, unitOverride);
+      for (const x of b) x.meta = readMeta(sh.rows, x.label);
       blocks.push(...b);
     }
     blocks.forEach((b, i) => { b.id = i; });
     return blocks;
   }
 
-  return { findAll, wellName, cellToHours };
+    /* Which block is fluorescence? Anything that is not absorbance/OD. */
+  function isFluor(b) {
+    if (b.meta && (b.meta.ex || /fluor/i.test(b.meta.mode || ''))) return true;
+    if (/\bOD\b|OD\d|abs|^\d{3}$/i.test(b.label)) return false;
+    return /fluo|gfp|rfp|yfp|mcherry|nile|lux|lum|ex\s*\d|em\s*\d/i.test(b.label);
+  }
+  return { findAll, wellName, cellToHours, isFluor };
 })();
 
 /* ─────────────── Plate geometry ─────────────── */
@@ -1179,7 +1233,16 @@ const DEFAULT_SETTINGS = {
   floor: 0.005, odMin: 0.02, trimDecline: true, winH: 1.5, r2min: 0.95, minGrowth: 0.05, odThr: 0.1,
   models: { logistic: true, gompertz: true, richards: true, baranyi: true },
   source: 'mf', timeUnit: 'auto',
+  // fluorescence (only used when a second, fluorescence read is paired with OD)
+  autofl: true, fMin: null, fodLevels: '0.3, 0.6, 1.0', odLinMax: 1.0, fStart: null,
 };
+
+/* Group roles. 'blank' = medium only, 'dyeblank' = medium + dye (no cells),
+   'nodye' = cells without dye (autofluorescence control). Only 'sample'
+   groups are compared in charts and statistics by default.               */
+const ROLES = { sample: 'Sample', blank: 'Blank (medium)', dyeblank: 'Dye blank (medium + dye)', nodye: 'Cells, no dye' };
+const isBlankRole = r => r === 'blank' || r === 'dyeblank';
+const isSampleRole = r => r === 'sample' || r == null;
 
 const METRICS = [
   { key: 'mu', label: 'µmax', unit: 'h⁻¹', d: 3, help: 'Maximum specific growth rate (slope of ln OD)' },
@@ -1194,7 +1257,30 @@ const METRICS = [
   { key: 'vmax', label: 'Max dOD/dt', unit: 'OD·h⁻¹', d: 4, help: 'Steepest absolute increase in OD per hour' },
   { key: 'r2', label: 'Fit R²', unit: '', d: 4, help: 'Goodness of fit of the selected model' },
 ];
+const OD_METRICS = METRICS.slice();
 const METRIC = Object.fromEntries(METRICS.map(m => [m.key, m]));
+function parseLevels(txt) { return String(txt || '').split(/[,;\s]+/).map(Number).filter(v => v > 0).sort((a, b) => a - b); }
+/* add the fluorescence parameters when a fluorescence read is analysed */
+function setMetrics(dual, S) {
+  METRICS.length = 0; METRICS.push(...OD_METRICS);
+  if (dual) {
+    METRICS.push(
+      { key: 'fmu', label: 'F µmax', unit: 'h⁻¹', d: 3, help: 'Steepest slope of ln(corrected fluorescence)', fl: true },
+      { key: 'flag', label: 'F lag time', unit: 'h', d: 2, help: 'Where the tangent at F µmax crosses the starting fluorescence', fl: true },
+      { key: 'fdelay', label: 'F onset delay vs OD', unit: 'h', d: 2, help: 'Time F reaches 10% of its rise minus the time OD reaches 10% of its rise', fl: true },
+      { key: 'fmax', label: 'Max F', unit: 'RFU', d: 0, help: 'Highest corrected fluorescence', fl: true },
+      { key: 'fdelta', label: 'ΔF', unit: 'RFU', d: 0, help: 'Max minus starting corrected fluorescence', fl: true },
+      { key: 'ffinal', label: 'Final F', unit: 'RFU', d: 0, help: 'Corrected fluorescence at the end (median of last 3)', fl: true },
+      { key: 'fauc', label: 'AUC (F)', unit: 'RFU·h', d: 0, help: 'Area under the corrected fluorescence curve', fl: true },
+      { key: 'ftmid', label: 'F time to half-max', unit: 'h', d: 2, help: 'Time when F reaches start + ΔF/2', fl: true },
+      { key: 'fvmax', label: 'Max dF/dt', unit: 'RFU·h⁻¹', d: 0, help: 'Steepest increase in fluorescence per hour', fl: true },
+      { key: 'fslope', label: 'dF/dOD (exp. phase)', unit: 'RFU/OD', d: 0, help: 'Slope of F against OD while OD is between the lowest usable OD and the end of exponential growth', fl: true },
+      { key: 'fodmax', label: 'Max F/OD', unit: 'RFU/OD', d: 0, help: 'Highest fluorescence per OD (OD above the lowest usable OD)', fl: true },
+      ...parseLevels(S.fodLevels).map(L => ({ key: 'fod@' + L, label: 'F/OD at OD ' + L, unit: 'RFU/OD', d: 0, help: 'Fluorescence per OD when OD first reaches ' + L, fl: true })));
+  }
+  for (const k in METRIC) delete METRIC[k];
+  for (const m of METRICS) METRIC[m.key] = m;
+}
 
 const Analysis = (() => {
 
@@ -1299,7 +1385,8 @@ const Analysis = (() => {
 
   /* ---- run everything ----
      block: parsed plate data; groups: layout; excluded: Set of wells. */
-  async function run(block, groups, excluded, S, onProgress, cache) {
+  async function run(block, groups, excluded, S, onProgress, cache, flBlock) {
+    setMetrics(!!flBlock, S);
     const heavyKey = JSON.stringify([S.smooth, S.floor, S.odMin, S.winH, S.r2min, S.minGrowth, S.odThr, S.models, S.trimDecline]);
     const tAll = block.times;
     const lo = S.tmin != null && S.tmin !== '' ? +S.tmin : -Infinity;
@@ -1313,14 +1400,15 @@ const Analysis = (() => {
     const series = w => idx.map(i => block.wells[w][i]);
     // blank vectors (mean of the blank group's wells at every time point)
     const blankVec = {};
-    for (const g of groups.filter(g => g.role === 'blank')) {
+    for (const g of groups.filter(g => isBlankRole(g.role))) {
       const ws = g.wells.filter(w => used.has(w) && !excluded.has(w));
       if (!ws.length) continue;
       let v = t.map((_, j) => M.mean(ws.map(w => block.wells[w][idx[j]])));
       if (S.blankAs === 'const') { const m = M.median(v); v = v.map(() => m); }
       blankVec[g.id] = v;
     }
-    const allBlankWells = groups.filter(g => g.role === 'blank').flatMap(g => g.wells).filter(w => used.has(w) && !excluded.has(w));
+    let allBlankWells = groups.filter(g => g.role === 'blank').flatMap(g => g.wells).filter(w => used.has(w) && !excluded.has(w));
+    if (!allBlankWells.length) allBlankWells = groups.filter(g => g.role === 'dyeblank').flatMap(g => g.wells).filter(w => used.has(w) && !excluded.has(w));
     let allBlank = allBlankWells.length ? t.map((_, j) => M.mean(allBlankWells.map(w => block.wells[w][idx[j]]))) : null;
     if (allBlank && S.blankAs === 'const') { const m = M.median(allBlank); allBlank = allBlank.map(() => m); }
 
@@ -1333,7 +1421,7 @@ const Analysis = (() => {
       const role = g ? g.role : 'sample';
       const res = { well: w, group: g ? g.id : null, role, raw, flags: [] };
       let b = null;
-      if (role === 'blank') { b = null; }
+      if (isBlankRole(role)) { b = null; }
       else if (S.blankMode === 'group') {
         let bid = g ? g.blank : null;
         if (!g) { const nb = Layout.nearestBlank(w, groups); if (nb) { bid = nb.id; res.flags.push('ungrouped – used nearest blank ' + nb.name); } }
@@ -1346,7 +1434,7 @@ const Analysis = (() => {
       res.blank = b; res.corr = corr;
       res.smooth = M.movingAverage(corr, +S.smooth || 1);
       const y = res.smooth;
-      const ckey = role !== 'blank' && cache ? w + '|' + heavyKey + '|' + t.join(',') + '|' + corr.map(v => Number.isFinite(v) ? v.toFixed(6) : 'x').join(',') : null;
+      const ckey = !isBlankRole(role) && cache ? w + '|' + heavyKey + '|' + t.join(',') + '|' + corr.map(v => Number.isFinite(v) ? v.toFixed(6) : 'x').join(',') : null;
       const hit = ckey && cache.get(ckey);
       if (hit) {
         Object.assign(res, hit, { flags: hit.flags.slice() });
@@ -1354,7 +1442,7 @@ const Analysis = (() => {
         continue;
       }
       res.mf = modelFree(t, y, S);
-      if (role === 'blank') {
+      if (isBlankRole(role)) {
         if (res.mf.dOD > S.minGrowth) res.flags.push('blank increases – contamination?');
       } else {
         res.growth = res.mf.dOD >= S.minGrowth;
@@ -1380,19 +1468,141 @@ const Analysis = (() => {
     }
     onProgress && onProgress(1);
     const R = { t, idx, wells, groups: {}, blockId: block.id };
+    if (flBlock) runFluor(R, flBlock, groups, excluded, S);
     summarizeAll(R, groups, excluded, S);
     return R;
+  }
+
+  /* ---- fluorescence read, analysed alongside OD ----
+     F_corr = F − F(dye blank) − k·OD, where k (autofluorescence per OD unit)
+     comes from the cells-without-dye wells: a straight line through the
+     origin of (their F − medium F) against their blank-corrected OD.      */
+  function runFluor(R, fb, groups, excluded, S) {
+    const t = R.t, used = new Set(Object.keys(R.wells));
+    // fluorescence values at the OD time points (interpolate if the reads are not simultaneous)
+    const ft = fb.times;
+    const at = (w) => {
+      const v = fb.wells[w]; if (!v) return t.map(() => NaN);
+      return t.map(tt => {
+        let j = ft.findIndex(x => x >= tt - 1e-6);
+        if (j < 0) return NaN;
+        if (Math.abs(ft[j] - tt) < 1e-4 || j === 0) return v[j];
+        const a = ft[j - 1], b = ft[j];
+        return v[j - 1] + (v[j] - v[j - 1]) * (tt - a) / (b - a);
+      });
+    };
+    const roleWells = r => groups.filter(g => g.role === r).flatMap(g => g.wells).filter(w => used.has(w) && !excluded.has(w) && fb.wells[w]);
+    const meanOf = ws => ws.length ? t.map((_, j) => M.mean(ws.map(w => FL[w][j]))) : null;
+    const FL = {}; for (const w of used) FL[w] = at(w);
+    const constify = v => { if (v && S.blankAs === 'const') { const m = M.median(v); return v.map(() => m); } return v; };
+    const medium = constify(meanOf(roleWells('blank')));
+    const dye = constify(meanOf(roleWells('dyeblank')));
+    const bg = dye || medium || t.map(() => 0);
+    const bgName = dye ? 'dye blank' : medium ? 'medium blank' : 'none';
+    // autofluorescence per OD from cells-without-dye wells
+    let k = 0, kN = 0;
+    const nod = roleWells('nodye');
+    if (S.autofl && nod.length) {
+      let sxy = 0, sxx = 0;
+      for (const w of nod) {
+        const od = R.wells[w].corr;
+        t.forEach((_, j) => {
+          const af = FL[w][j] - (medium ? medium[j] : 0);
+          if (Number.isFinite(af) && od[j] >= S.odMin) { sxy += af * od[j]; sxx += od[j] * od[j]; kN++; }
+        });
+      }
+      k = sxx > 0 ? sxy / sxx : 0;
+    }
+    R.fl = { label: fb.label, bgName, k, kN, autofl: !!(S.autofl && nod.length), nodyeWells: nod, meta: fb.meta || null };
+    // lowest usable fluorescence for ln F
+    const corrAll = {};
+    for (const w of used) {
+      const r = R.wells[w];
+      // cells without dye: show their autofluorescence (F − medium); everything else: F − dye blank − k·OD
+      if (r.role === 'nodye') corrAll[w] = FL[w].map((v, j) => v - (medium ? medium[j] : 0));
+      else corrAll[w] = FL[w].map((v, j) => v - bg[j] - (isBlankRole(r.role) ? 0 : k * Math.max(0, r.corr[j] || 0)));
+    }
+    let fMin = S.fMin;
+    if (!(fMin > 0)) {
+      // 2% of the typical (median) maximum, so one very bright well does not set it
+      const mx = M.median(Object.keys(corrAll).filter(w => isSampleRole(R.wells[w].role)).map(w => Math.max(...M.fin(corrAll[w]), 0)));
+      fMin = Math.max(1, 0.02 * (mx || 1));
+    }
+    R.fl.fMin = fMin;
+    const f0 = S.fStart != null && S.fStart !== '' ? +S.fStart : -Infinity;
+    const levels = parseLevels(S.fodLevels);
+    for (const w of used) {
+      const r = R.wells[w];
+      const raw = FL[w], corr = corrAll[w], smooth = M.movingAverage(corr, +S.smooth || 1);
+      const fl = { raw, corr, smooth };
+      const od = r.smooth;
+      fl.fod = smooth.map((v, j) => od[j] >= S.odMin ? v / od[j] : NaN);
+      r.fl = fl;
+      // parameters use readings from "analyse F from" onwards
+      const keep = t.map(x => x >= f0);
+      const tt = t.filter((_, j) => keep[j]), yy = smooth.filter((_, j) => keep[j]), oo = od.filter((_, j) => keep[j]);
+      if (tt.length < 4) { fl.params = {}; continue; }
+      const mf = modelFree(tt, yy, Object.assign({}, S, { odMin: fMin, floor: fMin, odThr: Infinity }));
+      fl.mf = mf;
+      fl.muT = (() => { const full = muTrace(t, smooth, Object.assign({}, S, { odMin: fMin }), mf.window); return full.map((v, j) => keep[j] ? v : NaN); })();
+      const P = { fmax: mf.ymax, fdelta: mf.dOD, ffinal: mf.final, fauc: mf.auc, ftmid: mf.tmid, fvmax: mf.vmax };
+      if (!isBlankRole(r.role)) {
+        P.fmu = mf.mu; P.flag = mf.lag;
+        // onset delay: 10% of the rise, F versus OD
+        const tF = crossTime(tt, yy, mf.y0 + 0.1 * mf.dOD);
+        const tO = crossTime(t, od, r.mf.y0 + 0.1 * r.mf.dOD);
+        P.fdelay = mf.dOD > 0 && r.growth ? tF - tO : NaN;
+        // F/OD
+        const q = fl.fod.filter((v, j) => keep[j] && Number.isFinite(v));
+        P.fodmax = q.length ? Math.max(...q) : NaN;
+        for (const L of levels) {
+          const tc = crossTime(t, od, L);
+          let v = NaN;
+          if (Number.isFinite(tc)) {
+            const j = t.findIndex(x => x >= tc);
+            const fv = j <= 0 ? smooth[0] : smooth[j - 1] + (smooth[j] - smooth[j - 1]) * (tc - t[j - 1]) / (t[j] - t[j - 1]);
+            v = fv / L;
+          }
+          P['fod@' + L] = v;
+        }
+        // slope of F against OD in exponential phase
+        const top = Math.min(S.odLinMax || Infinity, 0.6 * r.mf.ymax);
+        const xs = [], ys = [];
+        oo.forEach((o, j) => { if (o >= S.odMin && o <= top && Number.isFinite(yy[j])) { xs.push(o); ys.push(yy[j]); } });
+        if (xs.length >= 3) { const lr = M.linreg(xs, ys); P.fslope = lr.slope; fl.fslopeR2 = lr.r2; fl.fslopeRange = [Math.min(...xs), Math.max(...xs)]; }
+        else P.fslope = NaN;
+        if (isSampleRole(r.role) && mf.dOD < 0) r.flags.push('fluorescence does not rise');
+        // sudden jumps (bubbles, condensation): reading far from its neighbours
+        let jumps = 0;
+        for (let j = 1; j < raw.length - 1; j++) {
+          const m = (raw[j - 1] + raw[j + 1]) / 2;
+          if (Math.abs(raw[j] - m) > 0.25 * Math.abs(m) && Math.abs(raw[j] - m) > 5 * fMin) jumps++;
+        }
+        if (jumps) r.flags.push(`fluorescence jumps at ${jumps} reading${jumps > 1 ? 's' : ''}`);
+        // a sudden step up (>30% between two readings) late in the run often means clumping, a bubble or a burst
+        for (let j = 1; j < raw.length; j++) {
+          if (raw[j - 1] > 5 * fMin && raw[j] > 1.3 * raw[j - 1] && t[j] >= f0) { r.flags.push(`sudden fluorescence rise at ${t[j].toFixed(1)} h`); break; }
+        }
+      }
+      fl.params = P;
+    }
   }
 
   /* cheap part: choose parameters by source, then group means/SD.
      Re-run whenever the parameter source or well exclusions change. */
   function summarizeAll(R, groups, excluded, S) {
+    setMetrics(!!R.fl, S);
     const { t, wells } = R;
     for (const w in wells) {
       const res = wells[w];
       res.flags = res.flags.filter(f => f !== 'fit failed' && f !== 'poor fit' && f !== 'differs from replicates');
-      if (res.role === 'blank') { res.params = { ymax: res.mf.ymax, dOD: res.mf.dOD, final: res.mf.final, auc: res.mf.auc }; continue; }
+      if (isBlankRole(res.role)) {
+        res.params = { ymax: res.mf.ymax, dOD: res.mf.dOD, final: res.mf.final, auc: res.mf.auc };
+        if (res.fl) Object.assign(res.params, { fmax: res.fl.params.fmax, ffinal: res.fl.params.ffinal, fauc: res.fl.params.fauc });
+        continue;
+      }
       res.params = pickParams(res, S);
+      if (res.fl) Object.assign(res.params, res.fl.params);
       if (S.source !== 'mf' && res.growth && !Number.isFinite(res.params.mu)) res.flags.push('fit failed');
       if (S.source !== 'mf' && Number.isFinite(res.params.r2) && res.params.r2 < 0.98) res.flags.push('poor fit');
     }
@@ -1403,12 +1613,20 @@ const Analysis = (() => {
       gr.mean = t.map((_, j) => M.mean(ws.map(w => wells[w].smooth[j])));
       gr.sd = t.map((_, j) => M.sd(ws.map(w => wells[w].smooth[j])));
       gr.nAt = t.map((_, j) => ws.filter(w => Number.isFinite(wells[w].smooth[j])).length);
-      if (g.role !== 'blank') {
+      if (R.fl) {
+        const pick = k => ws.map(w => wells[w].fl ? wells[w].fl[k] : null).filter(Boolean);
+        const agg = k => { const a = pick(k); return { m: t.map((_, j) => M.mean(a.map(x => x[j]))), s: t.map((_, j) => M.sd(a.map(x => x[j]))), n: t.map((_, j) => a.filter(x => Number.isFinite(x[j])).length) }; };
+        const F = agg('smooth'), Q = agg('fod'), U = agg('muT');
+        gr.flMean = F.m; gr.flSd = F.s; gr.flN = F.n;
+        gr.fodMean = Q.m; gr.fodSd = Q.s; gr.fodN = Q.n;
+        gr.flMuMean = U.m; gr.flMuSd = U.s;
+      }
+      if (!isBlankRole(g.role)) {
         gr.muMean = t.map((_, j) => M.mean(ws.map(w => wells[w].muT ? wells[w].muT[j] : NaN)));
         gr.muSd = t.map((_, j) => M.sd(ws.map(w => wells[w].muT ? wells[w].muT[j] : NaN)));
       }
       for (const m of METRICS) gr.metrics[m.key] = summarize(ws.map(w => wells[w].params[m.key]));
-      if (ws.length >= 3 && g.role !== 'blank') {
+      if (ws.length >= 3 && isSampleRole(g.role)) {
         const med = M.median(ws.map(w => wells[w].mf.auc));
         for (const w of ws) if (Math.abs(med) > 0.5 && Math.abs(wells[w].mf.auc - med) > 0.2 * Math.abs(med)) wells[w].flags.push('differs from replicates');
       }
@@ -1447,7 +1665,7 @@ const Analysis = (() => {
     return s;
   }
 
-  return { run, summarizeAll, usedWells, summarize, pickParams };
+  return { run, summarizeAll, usedWells, summarize, pickParams, runFluor };
 })();
 
 /* ═════════════════════════════════════════════════════════════════════
@@ -1459,14 +1677,16 @@ const Layout = (() => {
   const newGroup = (name, wells, role) => ({ id: 'g' + (nextId++) + '_' + Math.random().toString(36).slice(2, 6), name, wells, role: role || 'sample', blank: null, color: null, hidden: false });
   const resetIds = groups => { for (const g of groups) { const n = parseInt(String(g.id).slice(1)); if (n >= nextId) nextId = n + 1; } };
 
-  function tokens(name) { return String(name).toLowerCase().replace(BLANK_RE, ' ').split(/[^a-z0-9.µ]+/i).filter(Boolean); }
+  // words that describe the control type or a well position say nothing about which medium a blank belongs to
+  const STOP = new Set(['dye', 'no', 'control', 'ctrl', 'cells', 'cell', 'without', 'with', 'only', 'plus']);
+  function tokens(name) { return String(name).toLowerCase().replace(BLANK_RE, ' ').split(/[^a-z0-9.µ]+/i).filter(x => x && !STOP.has(x) && !/^[a-p]\d{1,2}$/.test(x)); }
 
   /* choose the best blank group for each sample group */
   function assignBlanks(groups, onlyIds) {
-    const blanks = groups.filter(g => g.role === 'blank');
+    const blanks = groups.filter(g => isBlankRole(g.role));
     for (const g of groups) {
       if (onlyIds && !onlyIds.has(g.id)) continue;
-      if (g.role === 'blank') { g.blank = null; continue; }
+      if (isBlankRole(g.role)) { g.blank = null; continue; }
       if (!blanks.length) { g.blank = null; continue; }
       const gt = new Set(tokens(g.name));
       const gp = g.wells.map(Plate.parse);
@@ -1480,7 +1700,7 @@ const Layout = (() => {
           const d = Math.abs(a.r - c.r) * 10 + Math.abs(a.c - c.c);
           if (d < dist) { dist = d; sameRow = a.r === c.r; before = c.c < a.c; }
         }
-        const score = shared * 1000 - dist + (sameRow ? 50 : 0) + (before ? 0.5 : 0);
+        const score = shared * 1000 - dist + (sameRow ? 50 : 0) + (before ? 0.5 : 0) + (b.role === 'blank' ? 200 : 0);
         if (score > bestScore) { bestScore = score; best = b; }
       }
       g.blank = best ? best.id : null;
@@ -1490,48 +1710,72 @@ const Layout = (() => {
 
   function nearestBlank(well, groups) {
     const tmp = { id: '__tmp', name: '', wells: [well], role: 'sample', blank: null };
-    assignBlanks([...groups.filter(g => g.role === 'blank'), tmp]);
+    assignBlanks([...groups.filter(g => isBlankRole(g.role)), tmp]);
     return groups.find(g => g.id === tmp.blank) || null;
   }
 
-  /* Guess the layout from the data itself */
-  function auto(block, used, orient, chunk) {
+  /* Guess the layout from the data itself.
+     With a fluorescence read as well, flat-OD wells are split into medium
+     blanks and dye blanks by their fluorescence level, and growing wells whose
+     fluorescence hardly rises become the cells-without-dye control.        */
+  function classify(block, used, fb) {
+    const ws = [...used], role = {};
+    const info = {};
+    for (const w of ws) { const f = M.fin(block.wells[w]); info[w] = { range: Math.max(...f) - Math.min(...f) }; }
+    const flat = ws.filter(w => info[w].range < 0.05);
+    const useFlat = flat.length && flat.length <= ws.length * 0.45;
+    for (const w of ws) role[w] = useFlat && info[w].range < 0.05 ? 'blank' : 'sample';
+    if (fb) {
+      const lvl = w => M.median(M.fin(fb.wells[w] || []));
+      const blanks = ws.filter(w => role[w] === 'blank' && fb.wells[w]);
+      if (blanks.length >= 2) {
+        const v = blanks.map(lvl), lo = Math.min(...v), hi = Math.max(...v);
+        if (hi > 1.5 * lo) { const cut = Math.sqrt(lo * hi); blanks.forEach((w, i) => { if (v[i] > cut) role[w] = 'dyeblank'; }); }
+      }
+      const rise = w => { const f = M.movingAverage(fb.wells[w] || [], 3).filter(Number.isFinite); return f.length ? f[f.length - 1] - Math.min(...f) : 0; };
+      const grow = ws.filter(w => role[w] === 'sample' && fb.wells[w]);
+      const medRise = M.median(grow.map(rise));
+      if (grow.length >= 3 && medRise > 0) for (const w of grow) if (rise(w) < 0.15 * medRise) role[w] = 'nodye';
+    }
+    return role;
+  }
+  const PREFIX = { blank: 'Blank ', dyeblank: 'Dye blank ', nodye: 'No-dye control ' };
+  function auto(block, used, orient, chunk, fb) {
     const ws = [...used];
     const fmt = Plate.formatFor(block.listedWells.length ? block.listedWells : ws);
-    // flat, low wells → blank candidates
-    const info = {};
-    for (const w of ws) {
-      const f = M.fin(block.wells[w]);
-      info[w] = { range: Math.max(...f) - Math.min(...f), start: M.median(f.slice(0, 3)) };
-    }
-    const flat = ws.filter(w => info[w].range < 0.05);
-    const blankSet = new Set(flat.length && flat.length <= ws.length * 0.45 ? flat : []);
+    const role = classify(block, used, fb);
     const groups = [];
     const lines = orient === 'cols' ? fmt.cols : fmt.rows;
     const len = orient === 'cols' ? fmt.rows : fmt.cols;
+    let splitLong = false;
     for (let L = 0; L < lines; L++) {
-      let run = [], runBlank = null;
+      let run = [], runRole = null;
       const flush = () => {
-        const size = chunk && !runBlank ? chunk : run.length;
+        let size = run.length;
+        if (runRole === 'sample') {
+          if (chunk) size = chunk;
+          else if (run.length > 6) { size = 1; splitLong = true; } // a long run is rarely one sample: keep wells apart
+        }
         for (let i = 0; i < run.length; i += size) {
           const part = run.slice(i, i + size);
-          groups.push(newGroup(part.length > 1 ? part[0] + '–' + part[part.length - 1] : part[0], part, runBlank ? 'blank' : 'sample'));
+          const nm = part.length > 1 ? part[0] + '–' + part[part.length - 1] : part[0];
+          groups.push(newGroup((PREFIX[runRole] || '') + nm, part, runRole));
         }
-        run = []; runBlank = null;
+        run = []; runRole = null;
       };
       for (let k = 0; k < len; k++) {
         const w = orient === 'cols' ? Plate.name(k, L) : Plate.name(L, k);
         if (!used.has(w)) { flush(); continue; }
-        const isB = blankSet.has(w);
-        if (run.length && isB !== runBlank) flush();
-        run.push(w); runBlank = isB;
+        if (run.length && role[w] !== runRole) flush();
+        run.push(w); runRole = role[w];
       }
       flush();
     }
-    for (const g of groups) if (g.role === 'blank') g.name = 'Blank ' + g.name;
-    groups.sort((a, b) => (a.role === 'blank') - (b.role === 'blank'));
+    const order = { sample: 0, nodye: 1, dyeblank: 2, blank: 3 };
+    groups.sort((a, b) => order[a.role] - order[b.role]);
     assignBlanks(groups);
-    return { groups, nBlank: blankSet.size };
+    const count = r => Object.values(role).filter(x => x === r).length;
+    return { groups, nBlank: count('blank'), nDye: count('dyeblank'), nNoDye: count('nodye'), splitLong };
   }
 
   /* Pasted plate map (grid from Excel) or "Name: A1-A3" list */
@@ -1655,7 +1899,7 @@ const Charts = (() => {
     for (let e = lo; e <= hi; e++) for (const m of mult) { const v = m * 10 ** e; if (v >= min * 0.999 && v <= max * 1.001) out.push(v); }
     return out;
   }
-  const tickLabel = v => { const a = Math.abs(v); if (a === 0) return '0'; if (a >= 1e4 || a < 1e-3) return v.toExponential(0); return String(+v.toPrecision(6)); };
+  const tickLabel = v => { const a = Math.abs(v); if (a === 0) return '0'; if (a >= 1e6 || a < 1e-3) return v.toExponential(0); return String(+v.toPrecision(6)); };
   const textW = (s, fs) => String(s).length * fs * 0.56;
 
   /* Builds axes; returns helpers + svg string parts */
@@ -1665,7 +1909,7 @@ const Charts = (() => {
     const yt = o.ylog ? logTicks(o.y[0], o.y[1]) : niceTicks(o.y[0], o.y[1], o.yCount || 6);
     const yLabW = Math.max(...yt.map(v => textW(tickLabel(v), fsT)), 10);
     const legendW = o.legend && o.legend.length ? Math.min(W * 0.35, Math.max(...o.legend.map(l => textW(l.label, o.fsLeg))) + 34) : 0;
-    const m = { l: yLabW + fsA * 1.6 + 14, r: 14 + legendW, t: o.title ? fsA * 2.2 + 6 : 14, b: (o.xLabelsRot ? o.xLabelsRot : fsT + 8) + fsA * 1.6 + 12 };
+    const m = { l: Math.max(yLabW + fsA * 1.6 + 14, o.leftMargin || 0), r: 14 + legendW + (o.extraRight || 0), t: o.title ? fsA * 2.2 + 6 : 14, b: (o.xLabelsRot ? o.xLabelsRot : fsT + 8) + fsA * 1.6 + 12 };
     const pw = W - m.l - m.r, ph = H - m.t - m.b;
     const x = o.xBand ? null : v => m.l + (v - o.x[0]) / (o.x[1] - o.x[0]) * pw;
     const ly0 = o.ylog ? Math.log10(o.y[0]) : 0, ly1 = o.ylog ? Math.log10(o.y[1]) : 0;
@@ -1696,7 +1940,7 @@ const Charts = (() => {
     if (legendW) {
       const lh = o.fsLeg * 1.45; let ly = m.t + 4;
       for (const l of o.legend) {
-        leg += `<g data-leg="${esc(l.id)}" style="cursor:pointer" opacity="${l.off ? 0.3 : 1}">`
+        leg += `<g ${l.id ? `data-leg="${esc(l.id)}" style="cursor:pointer"` : ''} opacity="${l.off ? 0.3 : 1}">`
           + `<rect x="${W - legendW}" y="${ly - lh / 2}" width="${legendW}" height="${lh}" fill="#fff" fill-opacity="0"/>`
           + `<line x1="${W - legendW + 4}" x2="${W - legendW + 22}" y1="${ly}" y2="${ly}" stroke="${l.color}" stroke-width="${l.dash ? 2 : 3}" ${l.dash ? 'stroke-dasharray="4 3"' : ''}/>`
           + (l.marker ? `<circle cx="${W - legendW + 13}" cy="${ly}" r="3.2" fill="${l.color}"/>` : '')
@@ -1708,6 +1952,32 @@ const Charts = (() => {
     const clip = 'c' + Math.random().toString(36).slice(2, 8);
     return { m, pw, ph, x, y, axes: s, legend: leg, clip,
       clipDef: `<clipPath id="${clip}"><rect x="${m.l}" y="${m.t - 2}" width="${pw}" height="${ph + 4}"/></clipPath>` };
+  }
+
+  /* second (right-hand) y-axis */
+  function rightWidth(dom, fsT, fsA, withLabel) {
+    const t = niceTicks(dom[0], dom[1], 6);
+    return Math.max(...t.map(v => textW(tickLabel(v), fsT)), 10) + 14 + (withLabel ? fsA * 1.6 : 0);
+  }
+  function rightAxis(F, dom, fsT, fsA, label) {
+    const ticks = niceTicks(dom[0], dom[1], 6);
+    const y2 = v => F.m.t + F.ph - (v - dom[0]) / (dom[1] - dom[0]) * F.ph;
+    const xr = F.m.l + F.pw;
+    let s = `<line x1="${xr}" x2="${xr}" y1="${F.m.t}" y2="${F.m.t + F.ph}" stroke="#333" stroke-width="1.2"/>`;
+    for (const v of ticks) {
+      if (v < dom[0] - 1e-9 || v > dom[1] + 1e-9) continue;
+      const yy = y2(v);
+      s += `<line x1="${xr}" x2="${xr + 5}" y1="${yy}" y2="${yy}" stroke="#333"/><text x="${xr + 7}" y="${yy}" font-size="${fsT}" dominant-baseline="middle" fill="#333">${tickLabel(v)}</text>`;
+    }
+    const w = Math.max(...ticks.map(v => textW(tickLabel(v), fsT)), 10);
+    if (label) s += `<text transform="translate(${xr + w + 12 + fsA * 0.75},${F.m.t + F.ph / 2}) rotate(90)" font-size="${fsA}" text-anchor="middle" fill="#111">${esc(label)}</text>`;
+    return { s, y2 };
+  }
+  /* put several finished charts under each other in one SVG */
+  function stack(parts, W) {
+    let y = 0, body = '';
+    for (const p of parts) { body += p.svg.replace('<svg ', `<svg x="0" y="${y}" `); y += p.H; }
+    return wrap(W, y, body);
   }
 
   const wrap = (W, H, body) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="${FONT}"><rect width="${W}" height="${H}" fill="#ffffff"/>${body}</svg>`;
@@ -1767,13 +2037,29 @@ const Charts = (() => {
     if (Number.isFinite(o.ymax)) yDom[1] = o.ymax;
     const xAuto = xDom.slice(), yAuto = yDom.slice();
     let xDomZ = xDom, yDomZ = yDom;
-    if (o.zoom) { xDomZ = o.zoom.x.slice(); yDomZ = o.zoom.y.slice(); }
-    const legend = o.legend ? o.series.map(s => ({ id: s.id, label: s.label, color: s.color, off: s.off, marker: o.points })) : null;
+    if (o.zoom) { xDomZ = o.zoom.x.slice(); if (o.zoom.y) yDomZ = o.zoom.y.slice(); }
+    // optional second data set on a right-hand axis (e.g. fluorescence next to OD)
+    let y2Dom = null, extraRight = 0;
+    const vis2 = o.series2 ? o.series2.filter(s => !s.off) : [];
+    if (o.series2) {
+      let lo2 = Infinity, hi2 = -Infinity;
+      for (const s of vis2) s.y.forEach((v, i) => { if (!Number.isFinite(v)) return; const e = Number.isFinite(s.err[i]) ? s.err[i] : 0; lo2 = Math.min(lo2, v - e); hi2 = Math.max(hi2, v + e); });
+      if (!Number.isFinite(lo2)) { lo2 = 0; hi2 = 1; }
+      y2Dom = niceRange(lo2, hi2, 0.04, lo2 >= 0);
+      extraRight = rightWidth(y2Dom, o.fsTick, o.fsAxis, !!o.y2lab);
+    }
+    let legend = o.legend ? o.series.map(s => ({ id: s.id, label: s.label, color: s.color, off: s.off, marker: o.points })) : null;
+    if (legend && o.legendExtra) legend = [...o.legendExtra, ...legend];
     const F = frame({ W: o.W, H: o.H, x: xDomZ, y: yDomZ, ylog: o.ylog, xlab: o.xlab, ylab: o.ylab, title: o.title,
-      fsAxis: o.fsAxis, fsTick: o.fsTick, fsLeg: o.fsLeg, legend });
+      fsAxis: o.fsAxis, fsTick: o.fsTick, fsLeg: o.fsLeg, legend, extraRight, leftMargin: o.leftMargin });
     const X = F.x, Y = F.y;
     let body = `<defs>${F.clipDef}</defs>` + F.axes;
     let plot = '';
+    if (Number.isFinite(o.shadeX) && o.shadeX < xDomZ[1]) {
+      const x0 = X(Math.max(o.shadeX, xDomZ[0]));
+      plot += `<rect x="${x0}" y="${F.m.t}" width="${F.m.l + F.pw - x0}" height="${F.ph}" fill="#efedf5"/>`
+        + `<text x="${x0 + 5}" y="${F.m.t + 13}" font-size="${Math.max(8, o.fsTick - 2)}" fill="#777">${esc(o.shadeLabel || '')}</text>`;
+    }
     if (o.zeroLine && yDomZ[0] < 0 && yDomZ[1] > 0) plot += `<line x1="${F.m.l}" x2="${F.m.l + F.pw}" y1="${Y(0)}" y2="${Y(0)}" stroke="#999" stroke-dasharray="3 3"/>`;
     for (const s of vis) {
       if (o.showWells) for (const w of s.wells)
@@ -1797,9 +2083,24 @@ const Charts = (() => {
         plot += `<g fill="#fff" stroke="${s.color}" stroke-width="1.1">${pts}</g>`;
       }
     }
+    let Y2 = null;
+    if (y2Dom) {
+      const ra = rightAxis(F, y2Dom, o.fsTick, o.fsAxis, o.y2lab);
+      body += ra.s; Y2 = ra.y2;
+      for (const s of vis2) {
+        if (o.errStyle === 'band' && o.errKind !== 'none')
+          plot += `<path d="${bandOf(s.t, s.y.map((v, i) => v - s.err[i]), s.y.map((v, i) => v + s.err[i]), X, Y2)}" fill="${s.color}" fill-opacity=".10" stroke="none"/>`;
+        plot += `<path d="${pathOf(s.t, s.y, X, Y2)}" fill="none" stroke="${s.color}" stroke-width="${o.lw}" stroke-dasharray="6 4" stroke-linejoin="round"/>`;
+        if (o.points && o.ps > 0) {
+          let pts = '';
+          s.t.forEach((t, i) => { if (Number.isFinite(s.y[i])) pts += `<rect x="${(X(t) - o.ps * 0.8).toFixed(1)}" y="${(Y2(s.y[i]) - o.ps * 0.8).toFixed(1)}" width="${o.ps * 1.6}" height="${o.ps * 1.6}"/>`; });
+          plot += `<g fill="${s.color}" fill-opacity=".8">${pts}</g>`;
+        }
+      }
+    }
     body += `<g clip-path="url(#${F.clip})">${plot}</g>` + F.legend;
     body += `<line class="xhair" x1="0" x2="0" y1="${F.m.t}" y2="${F.m.t + F.ph}" stroke="#5a3fa6" stroke-dasharray="3 3" visibility="hidden"/>`;
-    return { svg: wrap(o.W, o.H, body), F, xDom: xDomZ, yDom: yDomZ, xAuto, yAuto, ylog: !!o.ylog, vis };
+    return { svg: wrap(o.W, o.H, body), F, xDom: xDomZ, yDom: yDomZ, xAuto, yAuto, ylog: !!o.ylog, vis, vis2, y2Dom, Y2, H: o.H };
   }
 
   /* ---------- small multiples: one panel per group ---------- */
@@ -1818,6 +2119,14 @@ const Charts = (() => {
     if (Number.isFinite(o.ymax)) yDom[1] = o.ymax;
     const xs = niceTicks(tmin, tmax, 5), xstep = xs.length > 1 ? xs[1] - xs[0] : 1;
     const xDom = [Math.floor(tmin / xstep + 1e-9) * xstep, tmax + (tmax - tmin) * 0.01];
+    // optional second read (dashed, right axis)
+    let y2Dom = null;
+    if (o.panels.some(p => p.wells.some(w => w.y2))) {
+      let a = Infinity, b = -Infinity;
+      for (const p of o.panels) for (const w of p.wells) if (w.y2) for (const v of w.y2) if (Number.isFinite(v)) { a = Math.min(a, v); b = Math.max(b, v); }
+      if (!Number.isFinite(a)) { a = 0; b = 1; }
+      y2Dom = niceRange(a, b, 0.04, a >= 0);
+    }
     let body = '';
     const top0 = o.title ? 34 : 6;
     if (o.title) body += `<text x="${o.W / 2}" y="22" font-size="${o.fsAxis * 1.15}" font-weight="bold" text-anchor="middle">${esc(o.title)}</text>`;
@@ -1826,9 +2135,13 @@ const Charts = (() => {
       const cx = (k % cols) * pw, cy = top0 + Math.floor(k / cols) * ph;
       const showY = k % cols === 0, showX = Math.floor(k / cols) === rows - 1 || k + cols >= n;
       const fs = Math.max(8, o.fsTick - 1);
+      const fsA = Math.max(8, o.fsAxis - 1);
+      const showY2 = y2Dom && (k % cols === cols - 1 || k === n - 1);
       const F = frame({ W: pw, H: ph, x: xDom, y: yDom, ylog: o.ylog, xlab: showX ? o.xlab : '', ylab: showY ? o.ylab : '',
-        fsAxis: Math.max(8, o.fsAxis - 1), fsTick: fs, fsLeg: fs, title: p.label, yCount: 4, xCount: 5 });
+        fsAxis: fsA, fsTick: fs, fsLeg: fs, title: p.label, yCount: 4, xCount: 5, extraRight: y2Dom ? rightWidth(y2Dom, fs, fsA, true) : 0 });
       let s = `<defs>${F.clipDef}</defs>` + F.axes;
+      let Y2 = null;
+      if (y2Dom) { const ra = rightAxis(F, y2Dom, fs, fsA, showY2 ? o.y2lab : ''); s += ra.s; Y2 = ra.y2; }
       if (p.sub) s += `<text x="${F.m.l + 6}" y="${F.m.t + 12}" font-size="${fs}" text-anchor="start" fill="#555">${esc(p.sub)}</text>`;
       let plot = '';
       p.wells.forEach((w, i) => {
@@ -1845,6 +2158,7 @@ const Charts = (() => {
           hits.push({ x: cx + px, y: cy + py, well: w.id, t, v: w.y[j], group: p.label });
         });
         plot += `<g fill="${w.excl ? '#fff' : col}" fill-opacity="${w.fit ? 0.55 : 0.9}" stroke="${col}" stroke-width=".6" opacity="${op}" data-well="${esc(w.id)}">${pts}</g>`;
+        if (w.y2 && Y2) plot += `<path d="${pathOf(w.t, w.y2, F.x, Y2)}" stroke="${col}" stroke-width="${o.lw * 0.9}" stroke-dasharray="5 3" fill="none" opacity="${op}"/>`;
       });
       s += `<g clip-path="url(#${F.clip})">${plot}</g>`;
       body += `<g transform="translate(${cx},${cy})">${s}</g>`;
@@ -1943,7 +2257,7 @@ const Charts = (() => {
     return wrap(W, H, s);
   }
 
-  return { timecourse, panels, bars, plateSvg, errOf, ERR_LABEL, niceTicks };
+  return { timecourse, panels, bars, plateSvg, errOf, ERR_LABEL, niceTicks, stack };
 })();
 /* ═════════════════════════════════════════════════════════════════════
    8. EXPORT — CSV, a real multi-sheet .xlsx (written by hand, no library),
@@ -2031,7 +2345,7 @@ const Export = (() => {
 
   return { xlsx, csv, download, svgToPng, zip };
 })();
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.3';
 /* ═════════════════════════════════════════════════════════════════════
    7. THE APP — state, plate editor, views, events
    ═════════════════════════════════════════════════════════════════════ */
@@ -2039,9 +2353,10 @@ const App = (() => {
   const $ = id => document.getElementById(id);
   const clone = o => JSON.parse(JSON.stringify(o));
   const DEFAULT_DISPLAY = { err: 'sd', errStyle: 'band', palette: 'distinct', wells: false, points: true, blanks: false, legend: true,
-    lw: 2, ps: 2.5, fsAxis: 14, fsTick: 12, fsLeg: 12, w: 900, h: 540, title: '', xlab: 'Time (h)', ylab: 'OD600 (blank-corrected)', ymin: null, ymax: null };
+    lw: 2, ps: 2.5, fsAxis: 14, fsTick: 12, fsLeg: 12, w: 900, h: 540, title: '', xlab: 'Time (h)', ylab: 'OD600 (blank-corrected)', ymin: null, ymax: null,
+    flab: 'Fluorescence (RFU)' };
   const st = {
-    fileName: null, blocks: [], blockIdx: 0, fmt: Plate.formatFor(96), used: new Set(),
+    fileName: null, blocks: [], blockIdx: 0, flIdx: null, fmt: Plate.formatFor(96), used: new Set(),
     groups: [], excluded: new Set(), sel: new Set(),
     S: clone(DEFAULT_SETTINGS), D: clone(DEFAULT_DISPLAY),
     V: { tab: 'plate', curveData: 'corr', ylog: false, plateMode: 'layout', barMetric: 'mu', barType: 'bar', barPoints: true, ref: '',
@@ -2049,6 +2364,16 @@ const App = (() => {
     R: null, running: false, again: false, cache: new Map(), lastSvg: null, lastTable: null, lastName: 'chart',
   };
   const block = () => st.blocks[st.blockIdx];
+  const flBlock = () => st.flIdx != null && st.flIdx !== st.blockIdx ? st.blocks[st.flIdx] || null : null;
+  const dual = () => !!(st.R && st.R.fl);
+  /* choose the OD read and, if present, a fluorescence read measured on the same wells */
+  function pickReads(blocks) {
+    let od = blocks.findIndex(b => !Blocks.isFluor(b));
+    if (od < 0) od = 0;
+    const same = b => b !== blocks[od] && Math.abs(b.times.length - blocks[od].times.length) <= 1 && Object.keys(b.wells).some(w => blocks[od].wells[w]);
+    let fl = blocks.findIndex(b => Blocks.isFluor(b) && same(b));
+    return { od, fl: fl >= 0 ? fl : null };
+  }
   const groupById = id => st.groups.find(g => g.id === id);
 
   /* ---------------- tooltip ---------------- */
@@ -2067,9 +2392,11 @@ const App = (() => {
 
   /* ---------------- colours ---------------- */
   function colorMap() {
-    const samples = st.groups.filter(g => g.role !== 'blank');
+    const samples = st.groups.filter(g => isSampleRole(g.role));
     const m = Colors.assign(samples, st.D.palette);
-    st.groups.filter(g => g.role === 'blank').forEach((g, i) => { m[g.id] = g.color || ['#8a8798', '#6f6c80', '#a6a3b5', '#58556a'][i % 4]; });
+    const ctl = { blank: ['#8a8798', '#6f6c80', '#a6a3b5'], dyeblank: ['#c2185b', '#d65a8a', '#9c1449'], nodye: ['#b07d1a', '#8a6214', '#c99a3d'] };
+    const cnt = {};
+    st.groups.filter(g => !isSampleRole(g.role)).forEach(g => { const k = cnt[g.role] = (cnt[g.role] || 0) + 1; m[g.id] = g.color || (ctl[g.role] || ctl.blank)[(k - 1) % 3]; });
     return m;
   }
   const tint = (c, t = 0.8) => Colors.mix(c, '#ffffff', t);
@@ -2087,7 +2414,8 @@ const App = (() => {
         return;
       }
       st.fileName = file.name; st.blocks = blocks; st.groups = []; st.excluded = new Set(); st.sel.clear(); st.cache.clear();
-      setBlock(0, true);
+      const pr = pickReads(blocks); st.flIdx = pr.fl;
+      setBlock(pr.od, true);
     } catch (e) {
       console.error(e);
       message(esc(e.message || String(e)), 'err');
@@ -2110,6 +2438,13 @@ const App = (() => {
     sel.innerHTML = st.blocks.map((x, k) => `<option value="${k}">${esc(x.label)} — ${esc(x.sheet)} (${Object.keys(x.wells).length} wells, ${x.times.length} reads)</option>`).join('');
     if (b) sel.value = st.blockIdx;
     sel.disabled = st.blocks.length < 2;
+    const fs = $('flSel');
+    fs.innerHTML = `<option value="">(none – OD only)</option>` + st.blocks.map((x, k) => k === st.blockIdx ? '' : `<option value="${k}">${esc(x.label)} — ${esc(x.sheet)}</option>`).join('');
+    fs.value = flBlock() ? String(st.flIdx) : '';
+    $('flSelWrap').classList.toggle('hidden', st.blocks.length < 2);
+    $('flSec').classList.toggle('hidden', !flBlock());
+    $('flTag').textContent = flBlock() ? flBlock().label : '';
+    $('fileChip').textContent = b ? (st.fileName || '') + (st.blocks.length > 1 ? ' · ' + b.label + (flBlock() ? ' + ' + flBlock().label : '') : '') : 'no data loaded';
     ['btnSave', 'btnExport', 'btnReset'].forEach(id => $(id).disabled = !b);
   }
   function setBlock(i, fresh) {
@@ -2120,13 +2455,17 @@ const App = (() => {
     st.V.zoom = {};
     if (fresh || !st.groups.length) {
       if (b.aliases) st.groups = Layout.fromAliases(b.aliases);
-      else { const a = Layout.auto(b, st.used, 'rows', st.V.autoChunk); st.groups = a.groups; st.autoBlanks = a.nBlank; }
-      const t = b.times;
+      else { const a = Layout.auto(b, st.used, 'rows', st.V.autoChunk, flBlock()); st.groups = a.groups; st.autoInfo = a; }
+      const t = b.times, a = st.autoInfo || {}, fb = flBlock();
+      if (fb) st.D.flab = fb.label + ' fluorescence (RFU, corrected)';
       if (/OD|600|abs/i.test(b.label) || /^\d+$/.test(b.label)) st.D.ylab = (/^\d+$/.test(b.label) ? 'OD' + b.label : b.label) + ' (blank-corrected)';
-      const nG = st.groups.filter(g => g.role !== 'blank').length, nB = st.groups.filter(g => g.role === 'blank').length;
+      const nG = st.groups.filter(g => isSampleRole(g.role)).length, nB = st.groups.filter(g => !isSampleRole(g.role)).length;
+      const ctl = fb ? ` Controls found: ${a.nBlank || 0} medium-blank, ${a.nDye || 0} dye-blank and ${a.nNoDye || 0} cells-without-dye well${(a.nNoDye || 0) === 1 ? '' : 's'}.` : '';
       message(`Found <b>${st.used.size}</b> wells with data on a ${st.fmt.n}-well plate (${esc(Plate.compact([...st.used]))}), `
-        + `${t.length} readings from ${fmt(t[0], 2)} to ${fmt(t[t.length - 1], 2)} h. `
-        + (b.aliases ? `Grouped ${nG} samples by name.` : `Auto-layout made <b>${nG}</b> groups and <b>${nB}</b> blank group${nB === 1 ? '' : 's'} – check them on the Plate tab.`)
+        + `${t.length} readings from ${fmt(t[0], 2)} to ${fmt(t[t.length - 1], 2)} h`
+        + (fb ? `, with <b>${esc(b.label)}</b> and <b>${esc(fb.label)}</b> analysed together. ` : '. ')
+        + (b.aliases ? `Grouped ${nG} samples by name.` : `Auto-layout made <b>${nG}</b> sample group${nG === 1 ? '' : 's'} and <b>${nB}</b> control group${nB === 1 ? '' : 's'}.${ctl}`
+          + (a.splitLong ? ' Long rows of growing wells were kept as separate samples (one well each); group replicates on the Plate tab if needed.' : '') + ' Check them on the Plate tab.')
         + (b.overflow ? ` <br>${b.overflow} overflow readings were treated as missing.` : ''), b.overflow ? 'warn' : 'ok');
     }
     if (fresh) st.initial = JSON.stringify({ g: st.groups, D: st.D });
@@ -2148,7 +2487,7 @@ const App = (() => {
     $('runStatus').textContent = 'Fitting curves…';
     const t0 = performance.now();
     try {
-      st.R = await Analysis.run(block(), st.groups, st.excluded, st.S, f => { $('prog').style.width = (f * 100).toFixed(0) + '%'; }, st.cache);
+      st.R = await Analysis.run(block(), st.groups, st.excluded, st.S, f => { $('prog').style.width = (f * 100).toFixed(0) + '%'; }, st.cache, flBlock());
       const nw = Object.keys(st.R.wells).length;
       $('runStatus').textContent = `${nw} wells analysed in ${((performance.now() - t0) / 1000).toFixed(1)} s`;
     } catch (e) { console.error(e); $('runStatus').textContent = 'Error: ' + e.message; }
@@ -2165,7 +2504,7 @@ const App = (() => {
      Snapshots are compared as text, so only real changes are stored.       */
   const hist = { stack: [], idx: -1, lock: false, timer: null };
   function snap() {
-    return { light: JSON.stringify({ g: st.groups, x: [...st.excluded].sort(), S: st.S, D: st.D, f: st.fileName, b: st.blockIdx, i: st.initial || null }),
+    return { light: JSON.stringify({ g: st.groups, x: [...st.excluded].sort(), S: st.S, D: st.D, f: st.fileName, b: st.blockIdx, fl: st.flIdx, i: st.initial || null }),
       blocks: st.blocks, sheets: st.sheetsCache, msg: $('loadMsg').innerHTML };
   }
   function recordNow() {
@@ -2195,7 +2534,7 @@ const App = (() => {
     const dataChanged = s.blocks !== st.blocks;
     st.groups = o.g; Layout.resetIds(st.groups);
     st.excluded = new Set(o.x); st.S = o.S; st.D = o.D; st.initial = o.i;
-    st.fileName = o.f; st.blocks = s.blocks; st.sheetsCache = s.sheets; st.blockIdx = o.b; st.sel.clear();
+    st.fileName = o.f; st.blocks = s.blocks; st.sheetsCache = s.sheets; st.blockIdx = o.b; st.flIdx = o.fl ?? null; st.sel.clear();
     $('loadMsg').innerHTML = s.msg;
     if (dataChanged) { st.cache.clear(); st.R = null; st.V.zoom = {}; }
     writeInputs();
@@ -2225,7 +2564,7 @@ const App = (() => {
   function resetAll() {
     if (hist.timer) recordNow();
     const had = !!block();
-    st.blocks = []; st.fileName = null; st.sheetsCache = null; st.groups = []; st.excluded = new Set(); st.sel.clear();
+    st.blocks = []; st.flIdx = null; st.fileName = null; st.sheetsCache = null; st.groups = []; st.excluded = new Set(); st.sel.clear();
     st.S = clone(DEFAULT_SETTINGS); st.D = clone(DEFAULT_DISPLAY); st.R = null; st.initial = null; st.cache.clear();
     Object.assign(st.V, { tab: 'plate', zoom: {}, ref: '', sortKey: null, plateMode: 'layout', ylog: false, panelLog: false, curveData: 'corr' });
     $('runStatus').textContent = '';
@@ -2237,9 +2576,10 @@ const App = (() => {
 
   /* ---------------- settings binding ---------------- */
   const S_FIELDS = { s_blankMode: 'blankMode', s_blankAs: 'blankAs', s_smooth: 'smooth', s_minGrowth: 'minGrowth', s_tmin: 'tmin', s_tmax: 'tmax',
-    s_source: 'source', s_winH: 'winH', s_r2min: 'r2min', s_odMin: 'odMin', s_floor: 'floor', s_odThr: 'odThr', s_trimDecline: 'trimDecline' };
+    s_source: 'source', s_winH: 'winH', s_r2min: 'r2min', s_odMin: 'odMin', s_floor: 'floor', s_odThr: 'odThr', s_trimDecline: 'trimDecline',
+    s_autofl: 'autofl', s_fMin: 'fMin', s_fStart: 'fStart', s_fodLevels: 'fodLevels', s_odLinMax: 'odLinMax' };
   const D_FIELDS = { d_err: 'err', d_errStyle: 'errStyle', d_palette: 'palette', d_wells: 'wells', d_points: 'points', d_blanks: 'blanks', d_legend: 'legend',
-    d_lw: 'lw', d_ps: 'ps', d_fsAxis: 'fsAxis', d_fsTick: 'fsTick', d_fsLeg: 'fsLeg', d_w: 'w', d_h: 'h', d_title: 'title', d_xlab: 'xlab', d_ylab: 'ylab', d_ymin: 'ymin', d_ymax: 'ymax' };
+    d_lw: 'lw', d_ps: 'ps', d_fsAxis: 'fsAxis', d_fsTick: 'fsTick', d_fsLeg: 'fsLeg', d_w: 'w', d_h: 'h', d_title: 'title', d_xlab: 'xlab', d_ylab: 'ylab', d_ymin: 'ymin', d_ymax: 'ymax', d_flab: 'flab' };
   function readInput(el) {
     if (el.type === 'checkbox') return el.checked;
     if (el.type === 'number') return el.value === '' ? null : +el.value;
@@ -2257,12 +2597,22 @@ const App = (() => {
       if (key === 'source') resummarize(); else scheduleRun(150);
     });
     for (const m of Models.list) $('m_' + m.id).addEventListener('change', e => { st.S.models[m.id] = e.target.checked; scheduleRun(150); });
-    for (const id in D_FIELDS) $(id).addEventListener(['d_title', 'd_xlab', 'd_ylab'].includes(id) ? 'input' : 'change', e => { st.D[D_FIELDS[id]] = readInput(e.target); render(); });
+    for (const id in D_FIELDS) $(id).addEventListener(['d_title', 'd_xlab', 'd_ylab', 'd_flab'].includes(id) ? 'input' : 'change', e => { st.D[D_FIELDS[id]] = readInput(e.target); render(); });
     $('timeUnit').addEventListener('change', e => {
       st.S.timeUnit = e.target.value;
       if (st.sheetsCache) { const keep = st.groups; st.blocks = Blocks.findAll(st.sheetsCache, st.S.timeUnit); st.groups = keep; setBlock(Math.min(st.blockIdx, st.blocks.length - 1), false); }
     });
-    $('blockSel').addEventListener('change', e => setBlock(+e.target.value, false));
+    $('blockSel').addEventListener('change', e => { const i = +e.target.value; if (st.flIdx === i) st.flIdx = null; setBlock(i, false); });
+    $('flSel').addEventListener('change', e => {
+      st.flIdx = e.target.value === '' ? null : +e.target.value;
+      if (flBlock() && !st.groups.some(g => g.role === 'dyeblank' || g.role === 'nodye')) {
+        // offer the fluorescence-aware control detection when a read is added later
+        const a = Layout.auto(block(), st.used, 'rows', st.V.autoChunk, flBlock());
+        if (a.nDye || a.nNoDye) { st.groups = a.groups; message(`Fluorescence read added. Controls found: ${a.nBlank} medium-blank, ${a.nDye} dye-blank and ${a.nNoDye} cells-without-dye wells – check the Plate tab.`); }
+        st.D.flab = flBlock().label + ' fluorescence (RFU, corrected)';
+      }
+      st.cache.clear(); writeInputs(); refreshChrome(); scheduleRun(0);
+    });
   }
 
   /* ════════════════ VIEWS ════════════════ */
@@ -2283,7 +2633,7 @@ const App = (() => {
         <h2>Plate-reader growth curves, from raw file to figure.</h2>
         <p>Load the Excel or CSV file straight from the plate reader. Sigmoid finds the wells that hold data, guesses the replicate groups and blanks, and fits every curve.</p>
         <ol>
-          <li><b>Load</b> a Gen5, Tecan or plain Time × well table (.xlsx, .csv, .txt).</li>
+          <li><b>Load</b> a Gen5, Tecan (including Spark OD + fluorescence) or plain Time × well table (.xlsx, .csv, .txt).</li>
           <li><b>Check the layout</b> on the plate: rename groups, fix blanks, or paste a plate map from Excel.</li>
           <li><b>Read the results</b>: µmax, doubling time, lag, max OD, AUC, with statistics between groups.</li>
           <li><b>Export</b> figures (SVG, 300 dpi PNG) and an Excel workbook of every table.</li>
@@ -2307,6 +2657,7 @@ const App = (() => {
   function viewPlate() {
     const R = st.R, cm = colorMap(), b = block(), f = st.fmt;
     const wg = {}; for (const g of st.groups) for (const w of g.wells) wg[w] = g;
+    if (st.V.plateMode !== 'layout' && !METRIC[st.V.plateMode]) st.V.plateMode = 'layout';
     const mode = st.V.plateMode;
     let heat = null;
     if (mode !== 'layout') {
@@ -2318,11 +2669,13 @@ const App = (() => {
     for (const w of st.used) for (const v of b.wells[w]) if (v > ymaxAll) ymaxAll = v;
     let yminAll = Infinity;
     for (const w of st.used) for (const v of b.wells[w]) if (v < yminAll) yminAll = v;
+    const fb = flBlock(); let fLo = Infinity, fHi = -Infinity;
+    if (fb) for (const w of st.used) for (const v of fb.wells[w] || []) if (Number.isFinite(v)) { fLo = Math.min(fLo, v); fHi = Math.max(fHi, v); }
     const nSel = st.sel.size;
     const groupOpts = st.groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
     let html = `<div class="card">
       <div class="toolbar">
-        <h2 style="margin:0">Plate layout <small>${f.n}-well · ${st.used.size} wells with data · ${st.groups.filter(g => g.role !== 'blank').length} groups · ${st.groups.filter(g => g.role === 'blank').length} blank groups</small></h2>
+        <h2 style="margin:0">Plate layout <small>${f.n}-well · ${st.used.size} wells with data · ${st.groups.filter(g => isSampleRole(g.role)).length} sample groups · ${st.groups.filter(g => !isSampleRole(g.role)).length} control groups</small></h2>
         <div class="grow"></div>
         <label class="fld"><span>Colour wells by</span><select id="plateMode">
           <option value="layout">Group (layout)</option>
@@ -2348,7 +2701,7 @@ const App = (() => {
       for (let c = 0; c < f.cols; c++) {
         const w = Plate.name(r, c), used = st.used.has(w), g = wg[w];
         if (!used) { html += `<div class="well empty" data-w="${w}"><span class="wn">${w}</span></div>`; continue; }
-        const cls = ['well', st.sel.has(w) ? 'sel' : '', st.excluded.has(w) ? 'excl' : '', g && g.role === 'blank' ? 'blank' : ''].join(' ');
+        const cls = ['well', st.sel.has(w) ? 'sel' : '', st.excluded.has(w) ? 'excl' : '', g && !isSampleRole(g.role) ? 'blank' : ''].join(' ');
         let bg = 'var(--panel)', line = '#55506a', label = g ? g.name : 'ungrouped', lc = g ? cm[g.id] : 'var(--muted)';
         if (heat) {
           const v = R.wells[w] && R.wells[w].params ? R.wells[w].params[mode] : NaN;
@@ -2359,8 +2712,10 @@ const App = (() => {
         const t0 = ts[0], t1 = ts[ts.length - 1], span = (ymaxAll - yminAll) || 1;
         let d = '', pen = false;
         ys.forEach((v, i) => { if (!Number.isFinite(v)) { pen = false; return; } d += (pen ? 'L' : 'M') + ((ts[i] - t0) / (t1 - t0) * 96 + 2).toFixed(1) + ',' + (70 - (v - yminAll) / span * 50).toFixed(1); pen = true; });
+        let dF = '';
+        if (fb && fb.wells[w]) { let pn = false; const ft = fb.times; fb.wells[w].forEach((v, i) => { if (!Number.isFinite(v)) { pn = false; return; } dF += (pn ? 'L' : 'M') + ((ft[i] - t0) / (t1 - t0) * 96 + 2).toFixed(1) + ',' + (70 - (v - fLo) / ((fHi - fLo) || 1) * 50).toFixed(1); pn = true; }); }
         html += `<div class="${cls}" data-w="${w}" style="background:${bg}"><span class="wn" style="${heat ? 'color:' + lc : ''}">${w}</span>`
-          + `<svg viewBox="0 0 100 74" preserveAspectRatio="none"><path d="${d}" fill="none" stroke="${line}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`
+          + `<svg viewBox="0 0 100 74" preserveAspectRatio="none"><path d="${d}" fill="none" stroke="${line}" stroke-width="1.6" vector-effect="non-scaling-stroke"/>${dF ? `<path d="${dF}" fill="none" stroke="#c2185b" stroke-width="1.2" stroke-dasharray="3 2" vector-effect="non-scaling-stroke" opacity=".85"/>` : ''}</svg>`
           + `<span class="gname" style="color:${lc}">${esc(label)}</span></div>`;
       }
     }
@@ -2368,7 +2723,7 @@ const App = (() => {
       <div class="plate-legend">
         ${heat ? `<span class="heatscale">${fmt(heat.lo, METRIC[mode].d)} <i style="background:linear-gradient(90deg,${[0, .25, .5, .75, 1].map(Colors.viridis).join(',')})"></i> ${fmt(heat.hi, METRIC[mode].d)} ${esc(METRIC[mode].unit)}</span>` : ''}
         <span><span class="sw" style="background:repeating-linear-gradient(135deg,var(--empty) 0 3px,transparent 3px 6px)"></span>no data</span>
-        <span>◌ blank group</span><span>╱ excluded</span>
+        <span>◌ control group</span><span>╱ excluded</span>${fb ? `<span><span class="sw" style="background:none;border:0;border-top:2px dashed #c2185b;height:0"></span>${esc(fb.label)} (raw, dashed)</span>` : ''}
         <span>Click row letters or column numbers to select a whole row or column. Shift-drag adds to the selection.</span>
       </div>
     </div>`;
@@ -2382,7 +2737,7 @@ const App = (() => {
   }
 
   function groupEditorHtml(cm) {
-    const blanks = st.groups.filter(g => g.role === 'blank');
+    const blanks = st.groups.filter(g => isBlankRole(g.role));
     const R = st.R;
     const grouped = new Set(st.groups.flatMap(g => g.wells));
     const ungrouped = [...st.used].filter(w => !grouped.has(w));
@@ -2394,14 +2749,14 @@ const App = (() => {
       <button class="btn small danger" id="clearLayout">Clear all</button></div>`;
     if (!st.groups.length) h += `<p class="note">No groups yet. Select wells on the plate and press <b>Make group</b>, use auto-layout, or paste a plate map.</p>`;
     else {
-      h += `<div class="groups"><div class="grow-row head"><span></span><span>Name</span><span>Role</span><span>Blank subtracted</span><span>Wells</span><span>n</span><span></span></div>`;
+      h += `<div class="groups"><div class="grow-row head"><span></span><span>Name</span><span>Role</span><span>OD blank subtracted</span><span>Wells</span><span>n</span><span></span></div>`;
       st.groups.forEach((g, i) => {
         const gr = R && R.groups[g.id];
         h += `<div class="grow-row" data-g="${g.id}">
           <input type="color" value="${cm[g.id]}" data-act="color" title="Pick a colour (overrides the palette)">
           <input type="text" value="${esc(g.name)}" data-act="name" aria-label="Group name">
-          <select data-act="role"><option value="sample"${g.role === 'sample' ? ' selected' : ''}>Sample</option><option value="blank"${g.role === 'blank' ? ' selected' : ''}>Blank</option></select>
-          ${g.role === 'blank' ? '<span class="pill blank">is a blank</span>' : `<select data-act="blank"><option value="">(none)</option>${blanks.map(b => `<option value="${b.id}"${g.blank === b.id ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select>`}
+          <select data-act="role" title="Sample, or one of the control types">${Object.entries(ROLES).filter(([k]) => flBlock() || k === 'sample' || k === 'blank' || g.role === k).map(([k, v]) => `<option value="${k}"${g.role === k ? ' selected' : ''}>${flBlock() ? v : (k === 'blank' ? 'Blank' : v)}</option>`).join('')}</select>
+          ${isBlankRole(g.role) ? `<span class="pill blank">${g.role === 'dyeblank' ? 'F background' : 'is a blank'}</span>` : `<select data-act="blank"><option value="">(none)</option>${blanks.map(b => `<option value="${b.id}"${g.blank === b.id ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select>`}
           <input type="text" value="${esc(Plate.compact(g.wells))}" data-act="wells" class="mono" title="Edit as B4-B6, C4 or a rectangle like B4:D6" style="font-size:11.5px">
           <span class="num" title="wells with data (excluded wells not counted)">${gr ? gr.n : '–'}</span>
           <span class="ops"><button data-act="up" title="Move up">↑</button><button data-act="down" title="Move down">↓</button><button data-act="hide" title="${g.hidden ? 'Show in charts' : 'Hide from charts'}">${g.hidden ? '◯' : '●'}</button><button data-act="del" title="Delete group">✕</button></span>
@@ -2474,11 +2829,12 @@ const App = (() => {
   }
   function wellTip(w) {
     const r = st.R && st.R.wells[w]; const g = r && r.group ? groupById(r.group) : st.groups.find(x => x.wells.includes(w));
-    let h = `<b>${w}</b> · ${g ? esc(g.name) : 'ungrouped'}${g && g.role === 'blank' ? ' (blank)' : ''}${st.excluded.has(w) ? ' · <i>excluded</i>' : ''}`;
+    let h = `<b>${w}</b> · ${g ? esc(g.name) : 'ungrouped'}${g && !isSampleRole(g.role) ? ' (' + ROLES[g.role].toLowerCase() + ')' : ''}${st.excluded.has(w) ? ' · <i>excluded</i>' : ''}`;
     if (r && r.params) {
       const p = r.params;
       h += `<br>max OD ${fmt(p.ymax, 3)} · ΔOD ${fmt(p.dOD, 3)}`;
-      if (r.role !== 'blank') h += `<br>µmax ${fmt(p.mu, 3)} h⁻¹ · td ${fmt(p.td, 2)} h · lag ${fmt(p.lag, 2)} h<br>AUC ${fmt(p.auc, 2)}`;
+      if (!isBlankRole(r.role)) h += `<br>µmax ${fmt(p.mu, 3)} h⁻¹ · td ${fmt(p.td, 2)} h · lag ${fmt(p.lag, 2)} h<br>AUC ${fmt(p.auc, 2)}`;
+      if (r.fl && isSampleRole(r.role)) h += `<br>F: max ${fmt(p.fmax, 0)} · F µmax ${fmt(p.fmu, 3)} h⁻¹ · dF/dOD ${fmt(p.fslope, 0)}`;
       if (r.flags.length) h += `<br>⚠ ${r.flags.map(esc).join('; ')}`;
     }
     return h;
@@ -2496,7 +2852,7 @@ const App = (() => {
     const ws = [...st.sel].sort((a, b) => { const A = Plate.parse(a), B = Plate.parse(b); return A.r - B.r || A.c - B.c; });
     const g = Layout.newGroup(nm || (role === 'blank' ? 'Blank ' : '') + Plate.compact(ws), ws, role);
     st.groups.push(g);
-    if (role === 'blank') Layout.assignBlanks(st.groups, new Set(st.groups.filter(x => x.role !== 'blank' && !x.blank).map(x => x.id)));
+    if (role === 'blank') Layout.assignBlanks(st.groups, new Set(st.groups.filter(x => !isBlankRole(x.role) && !x.blank).map(x => x.id)));
     else Layout.assignBlanks(st.groups, new Set([g.id]));
     st.sel.clear();
     layoutChanged();
@@ -2524,7 +2880,7 @@ const App = (() => {
         const act = e.target.dataset.act;
         if (act === 'name') { g.name = e.target.value.trim() || g.name; render(); }
         else if (act === 'color') { g.color = e.target.value; render(); }
-        else if (act === 'role') { g.role = e.target.value; if (g.role === 'blank') { g.blank = null; Layout.assignBlanks(st.groups, new Set(st.groups.filter(x => x.role !== 'blank' && !x.blank).map(x => x.id))); } else Layout.assignBlanks(st.groups, new Set([g.id])); layoutChanged(); }
+        else if (act === 'role') { g.role = e.target.value; if (isBlankRole(g.role)) { g.blank = null; Layout.assignBlanks(st.groups, new Set(st.groups.filter(x => !isBlankRole(x.role) && !x.blank).map(x => x.id))); } else Layout.assignBlanks(st.groups, new Set([g.id])); layoutChanged(); }
         else if (act === 'blank') { g.blank = e.target.value || null; layoutChanged(); }
         else if (act === 'wells') {
           const ws = Plate.parseWellList(e.target.value, st.fmt);
@@ -2588,7 +2944,7 @@ const App = (() => {
   }
 
   /* ---------- chart helpers ---------- */
-  const chartGroups = () => st.groups.filter(g => (st.D.blanks || g.role !== 'blank') && st.R.groups[g.id] && st.R.groups[g.id].n);
+  const chartGroups = () => st.groups.filter(g => (st.D.blanks || isSampleRole(g.role)) && st.R.groups[g.id] && st.R.groups[g.id].n);
   function paperHtml(svg, extra = '') { return `<div class="paper" id="paper">${svg}</div>${extra}`; }
   function bindLegend(after) {
     $('paper').addEventListener('click', e => {
@@ -2606,7 +2962,8 @@ const App = (() => {
   /* ---------- zoom (Curves and Growth rate) ---------- */
   function zoomBarHtml(key) {
     const z = st.V.zoom[key];
-    return `<div class="fld"><span>Zoom${z ? ' · ' + fmt(z.x[0], 1) + '–' + fmt(z.x[1], 1) + ' h' : ''}</span><div class="zoombar">
+    const u = /fvod/.test(key) ? ' OD' : ' h';
+    return `<div class="fld"><span>Zoom${z ? ' · ' + fmt(z.x[0], /fvod/.test(key) ? 2 : 1) + '–' + fmt(z.x[1], /fvod/.test(key) ? 2 : 1) + u : ''}</span><div class="zoombar">
       <button class="btn small" id="zIn" title="Zoom in on the centre">+ In</button>
       <button class="btn small" id="zOut" title="Zoom out" ${z ? '' : 'disabled'}>− Out</button>
       <button class="btn small" id="zReset" title="Show the whole curve" ${z ? '' : 'disabled'}>Full view</button></div></div>`;
@@ -2616,10 +2973,11 @@ const App = (() => {
   function setZoom(key, x, y, C) {
     // never zoom out past the full view; if we reach it, drop the zoom
     x = [Math.max(x[0], C.xAuto[0]), Math.min(x[1], C.xAuto[1])];
+    if (C.xOnly) y = C.yAuto.slice();
     y = [Math.max(y[0], C.yAuto[0]), Math.min(y[1], C.yAuto[1])];
     const eps = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
     const full = eps(x[0], C.xAuto[0]) && eps(x[1], C.xAuto[1]) && eps(y[0], C.yAuto[0]) && eps(y[1], C.yAuto[1]);
-    st.V.zoom[key] = full || !(x[1] > x[0]) || !(y[1] > y[0]) ? null : { x, y };
+    st.V.zoom[key] = full || !(x[1] > x[0]) || !(y[1] > y[0]) ? null : C.xOnly ? { x } : { x, y };
     render();
   }
   function scaleZoom(key, C, factor) {
@@ -2668,56 +3026,119 @@ const App = (() => {
   }
 
   /* ---------- CURVES ---------- */
+  /* kind: corr | raw | rate (OD) — fl | flraw | flrate | fod (fluorescence) */
   function seriesFor(kind) {
     const cm = colorMap(), R = st.R, D = st.D;
+    const nan = () => R.t.map(() => NaN);
     return chartGroups().map(g => {
       const gr = R.groups[g.id];
-      let y, sd, wells;
-      if (kind === 'rate') { y = gr.muMean || R.t.map(() => NaN); sd = gr.muSd || R.t.map(() => NaN); wells = gr.wells.map(w => ({ id: w, y: R.wells[w].muT || [] })); }
-      else if (kind === 'raw') {
-        wells = gr.wells.map(w => ({ id: w, y: R.wells[w].raw }));
+      let y, sd, wells, n;
+      const fromWells = k => {
+        wells = gr.wells.map(w => ({ id: w, y: k(R.wells[w]) || nan() }));
         y = R.t.map((_, j) => M.mean(wells.map(x => x.y[j]))); sd = R.t.map((_, j) => M.sd(wells.map(x => x.y[j])));
-      } else { y = gr.mean; sd = gr.sd; wells = gr.wells.map(w => ({ id: w, y: R.wells[w].smooth })); }
-      const n = kind === 'rate' ? R.t.map((_, j) => wells.filter(x => Number.isFinite(x.y[j])).length) : gr.nAt;
-      const err = sd.map((s, j) => Number.isFinite(s) ? Charts.errOf(s, n[j], D.err) : NaN);
-      return { id: g.id, label: g.name + (gr.n ? ` (n=${gr.n})` : ''), color: cm[g.id], t: R.t, y, err, wells, off: g.hidden, n };
+      };
+      if (kind === 'rate') fromWells(r => r.muT);
+      else if (kind === 'raw') fromWells(r => r.raw);
+      else if (kind === 'fl') fromWells(r => r.fl && r.fl.smooth);
+      else if (kind === 'flraw') fromWells(r => r.fl && r.fl.raw);
+      else if (kind === 'flrate') fromWells(r => r.fl && r.fl.muT);
+      else if (kind === 'fod') fromWells(r => r.fl && r.fl.fod);
+      else { y = gr.mean; sd = gr.sd; wells = gr.wells.map(w => ({ id: w, y: R.wells[w].smooth })); }
+      n = R.t.map((_, j) => wells.filter(x => Number.isFinite(x.y[j])).length);
+      const err = sd.map((v, j) => Number.isFinite(v) ? Charts.errOf(v, n[j], D.err) : NaN);
+      return { id: g.id, label: g.name + (gr.n > 1 ? ` (n=${gr.n})` : ''), color: cm[g.id], t: R.t, y, err, wells, off: g.hidden, n };
     });
   }
+  const CURVE_VIEWS = [['od', 'OD only'], ['fl', 'Fluorescence only'], ['dual', 'OD + fluorescence (two y-axes)'], ['stack', 'OD and fluorescence stacked'],
+    ['fod', 'F/OD over time'], ['fvod', 'Fluorescence against OD']];
   function viewCurves() {
-    const D = st.D, V = st.V;
-    const series = seriesFor(V.curveData);
-    const ylab = V.curveData === 'raw' ? (D.ylab || 'OD').replace(/\s*\(blank-corrected\)/, '') + ' (raw)' : D.ylab;
-    const C = Charts.timecourse({ series, t: st.R.t, W: D.w, H: D.h, ylog: V.ylog, logFloor: st.S.floor, xlab: D.xlab, ylab: ylab + (D.err !== 'none' ? ' ' + Charts.ERR_LABEL[D.err] : ''),
-      title: D.title, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg, legend: D.legend, lw: D.lw, ps: D.ps, points: D.points, showWells: D.wells,
-      errKind: D.err, errStyle: D.errStyle, ymin: D.ymin, ymax: D.ymax, zero: !V.ylog, zoom: V.zoom.curves });
-    $('view').innerHTML = `<div class="card">${timeToolbar(`
-      <label class="fld"><span>Data</span><select id="cData"><option value="corr">Blank-corrected OD</option><option value="raw">Raw OD</option></select></label>
-      <label class="fld"><span>Y axis</span><select id="cLog"><option value="0">Linear</option><option value="1">Log scale</option></select></label>
-      ${zoomBarHtml('curves')}`)}
-      ${paperHtml(C.svg)}</div>`;
-    $('cData').value = V.curveData; $('cLog').value = V.ylog ? '1' : '0';
-    $('cData').onchange = e => { V.curveData = e.target.value; V.zoom.curves = null; render(); };
-    $('cLog').onchange = e => { V.ylog = e.target.value === '1'; V.zoom.curves = null; render(); };
+    const D = st.D, V = st.V, R = st.R;
+    const isDual = dual();
+    const view = isDual ? (V.cView || 'dual') : 'od';
+    const zkey = 'curves:' + view;
+    const raw = V.curveData === 'raw';
+    const errTxt = D.err !== 'none' ? ' ' + Charts.ERR_LABEL[D.err] : '';
+    const odLab = raw ? (D.ylab || 'OD').replace(/\s*\(blank-corrected\)/, '') + ' (raw)' : D.ylab;
+    const flLab = raw ? (D.flab || 'Fluorescence').replace(/,?\s*corrected\)?/, ')').replace('()', '') + ' (raw)' : D.flab;
+    const common = { W: D.w, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg, legend: D.legend, lw: D.lw, ps: D.ps, points: D.points,
+      showWells: D.wells, errKind: D.err, errStyle: D.errStyle, title: D.title };
+    let C, svg, table;
+    const odS = () => seriesFor(raw ? 'raw' : 'corr'), flS = () => seriesFor(raw ? 'flraw' : 'fl');
+    if (view === 'od' || view === 'fl' || view === 'fod') {
+      const series = view === 'od' ? odS() : view === 'fl' ? flS() : seriesFor('fod');
+      const ylab = (view === 'od' ? odLab : view === 'fl' ? flLab : 'F/OD (RFU per OD unit)') + errTxt;
+      C = Charts.timecourse(Object.assign({}, common, { series, t: R.t, H: D.h, ylog: V.ylog, logFloor: view === 'od' ? st.S.floor : (R.fl ? R.fl.fMin : 1),
+        xlab: D.xlab, ylab, ymin: view === 'od' ? D.ymin : null, ymax: view === 'od' ? D.ymax : null, zero: !V.ylog, zoom: V.zoom[zkey] }));
+      svg = C.svg; table = curveRows(series);
+    } else if (view === 'dual') {
+      const a = odS(), b = flS();
+      C = Charts.timecourse(Object.assign({}, common, { series: a, series2: b, t: R.t, H: D.h, ylog: V.ylog, logFloor: st.S.floor, xlab: D.xlab,
+        ylab: odLab + errTxt, y2lab: flLab, ymin: D.ymin, ymax: D.ymax, zero: !V.ylog, zoom: V.zoom[zkey] ? { x: V.zoom[zkey].x } : null,
+        legendExtra: [{ id: '', label: 'OD (left axis)', color: '#444' }, { id: '', label: 'Fluorescence (right)', color: '#444', dash: true }] }));
+      C.xOnly = true;
+      C.tipRows = j => C.vis.map((s, i) => [s, s.y[j], b.find(x => x.id === s.id)]).filter(r => Number.isFinite(r[1]))
+        .map(([s, v, f]) => `<span class="dot" style="background:${s.color}"></span>${esc(s.label)}: OD ${fmt(v, 3)} · F ${fmt(f ? f.y[j] : NaN, 0)}`);
+      svg = C.svg; table = curveRows([...a.map(x => Object.assign({}, x, { label: x.label + ' OD' })), ...b.map(x => Object.assign({}, x, { label: x.label + ' F' }))]);
+    } else if (view === 'stack') {
+      const a = odS(), b = flS(), hTop = Math.round(D.h * 0.55), hBot = Math.round(D.h * 0.55);
+      const z = V.zoom[zkey] ? { x: V.zoom[zkey].x } : null;
+      const mk = (series, H, ylab, xlab, lm, title) => Charts.timecourse(Object.assign({}, common, { series, t: R.t, H, ylog: V.ylog, logFloor: series === a ? st.S.floor : (R.fl ? R.fl.fMin : 1),
+        xlab, ylab, zero: !V.ylog, zoom: z, leftMargin: lm, title }));
+      let top = mk(a, hTop, odLab + errTxt, '', 0, D.title), bot = mk(b, hBot, flLab + errTxt, D.xlab, 0, '');
+      const lm = Math.max(top.F.m.l, bot.F.m.l);
+      top = mk(a, hTop, odLab + errTxt, '', lm, D.title); bot = mk(b, hBot, flLab + errTxt, D.xlab, lm, '');
+      svg = Charts.stack([top, bot], D.w);
+      const span = { m: { l: top.F.m.l, t: top.F.m.t }, pw: top.F.pw, ph: hTop + bot.F.m.t + bot.F.ph - top.F.m.t, x: top.F.x };
+      C = { F: span, xDom: top.xDom, yDom: top.yDom, xAuto: top.xAuto, yAuto: top.yAuto, ylog: top.ylog, vis: top.vis, xOnly: true,
+        tipRows: j => top.vis.map(s => [s, s.y[j], bot.vis.find(x => x.id === s.id)]).filter(r => Number.isFinite(r[1]))
+          .map(([s, v, f]) => `<span class="dot" style="background:${s.color}"></span>${esc(s.label)}: OD ${fmt(v, 3)} · F ${fmt(f ? f.y[j] : NaN, 0)}`) };
+      table = curveRows([...a.map(x => Object.assign({}, x, { label: x.label + ' OD' })), ...b.map(x => Object.assign({}, x, { label: x.label + ' F' }))]);
+    } else { // fvod
+      const a = seriesFor('corr'), b = seriesFor('fl');
+      const series = a.map(s => { const f = b.find(x => x.id === s.id); return Object.assign({}, s, { t: s.y, y: f.y, err: s.y.map(() => NaN),
+        wells: s.wells.map(w => ({ id: w.id, y: R.wells[w.id].fl ? R.wells[w.id].fl.smooth : [], x: w.y })) }); });
+      const allX = series.flatMap(s => s.t.filter(Number.isFinite));
+      C = Charts.timecourse(Object.assign({}, common, { series, t: allX.length ? allX : [0, 1], H: D.h, xlab: (D.ylab || 'OD').replace(/\s*\(blank-corrected\)/, ''), ylab: D.flab,
+        errKind: 'none', showWells: false, zero: true, zoom: V.zoom[zkey], shadeX: st.S.odLinMax, shadeLabel: `above OD ${st.S.odLinMax} (outside the reliable range)` }));
+      svg = C.svg;
+      const hits = []; for (const sr of C.vis) sr.t.forEach((x, i) => { if (Number.isFinite(x) && Number.isFinite(sr.y[i])) hits.push({ x: C.F.x(x), y: C.F.y(sr.y[i]), group: sr.label, od: x, f: sr.y[i], tt: R.t[i] }); });
+      C.hits = hits;
+      table = [['Time (h)', ...series.flatMap(s => [s.label + ' OD', s.label + ' F'])], ...R.t.map((t, j) => [+t.toFixed(4), ...series.flatMap(s => [s.t[j], s.y[j]])])];
+    }
+    const viewSel = isDual ? `<label class="fld"><span>Show</span><select id="cView">${CURVE_VIEWS.map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>` : '';
+    $('view').innerHTML = `<div class="card">${timeToolbar(`${viewSel}
+      ${view !== 'fod' && view !== 'fvod' ? `<label class="fld"><span>Data</span><select id="cData"><option value="corr">Corrected</option><option value="raw">Raw (as read)</option></select></label>` : ''}
+      ${view !== 'fvod' ? `<label class="fld"><span>Y axis</span><select id="cLog"><option value="0">Linear</option><option value="1">Log scale${view === 'dual' ? ' (OD axis)' : ''}</option></select></label>` : ''}
+      ${zoomBarHtml(zkey)}`)}
+      ${view === 'fvod' ? `<p class="note" style="margin:0 0 8px">Each line follows one group through time. A steeper line means more fluorescence per unit of biomass. The grey area is above the highest reliable OD (${st.S.odLinMax}).</p>` : ''}
+      ${view === 'fod' ? `<p class="note" style="margin:0 0 8px">Corrected fluorescence divided by corrected OD, shown only where OD ≥ ${st.S.odMin} (below that the ratio is mostly noise).</p>` : ''}
+      ${paperHtml(svg)}</div>`;
+    if (isDual) { $('cView').value = view; $('cView').onchange = e => { V.cView = e.target.value; render(); }; }
+    if ($('cData')) { $('cData').value = V.curveData; $('cData').onchange = e => { V.curveData = e.target.value; V.zoom[zkey] = null; render(); }; }
+    if ($('cLog')) { $('cLog').value = V.ylog ? '1' : '0'; $('cLog').onchange = e => { V.ylog = e.target.value === '1'; V.zoom[zkey] = null; render(); }; }
     bindLegend();
-    bindCrosshair(C, 'OD');
-    bindZoom(C, 'curves');
-    st.lastSvg = C.svg; st.lastName = 'growth_curves';
-    st.lastTable = curveRows(series);
+    if (view === 'fvod') bindHits(C.hits, h => `<b>${esc(h.group)}</b><br>${fmt(h.tt, 2)} h · OD ${fmt(h.od, 3)} · F ${fmt(h.f, 0)}<br>F/OD ${fmt(h.f / h.od, 0)}`);
+    else bindCrosshair(C, 'OD');
+    bindZoom(C, zkey);
+    st.lastSvg = svg; st.lastName = { od: 'growth_curves', fl: 'fluorescence', dual: 'od_and_fluorescence', stack: 'od_fluorescence_stacked', fod: 'F_per_OD', fvod: 'F_vs_OD' }[view];
+    st.lastTable = table;
   }
   function bindCrosshair(C, unit) {
     const paper = $('paper');
     paper.addEventListener('mousemove', e => {
       if (paper.dataset.dragging) return;
       const p = svgPoint(e), F = C.F;
-      const line = p.svg.querySelector('.xhair');
-      if (p.x < F.m.l || p.x > F.m.l + F.pw || p.y < F.m.t || p.y > F.m.t + F.ph) { line.setAttribute('visibility', 'hidden'); hideTip(); return; }
+      const lines = p.svg.querySelectorAll('.xhair');
+      const setL = (a, v) => lines.forEach(l => l.setAttribute(a, v));
+      if (p.x < F.m.l || p.x > F.m.l + F.pw || p.y < F.m.t || p.y > F.m.t + F.ph) { setL('visibility', 'hidden'); hideTip(); return; }
       const tt = C.xDom[0] + (p.x - F.m.l) / F.pw * (C.xDom[1] - C.xDom[0]);
       let j = 0; st.R.t.forEach((t, i) => { if (Math.abs(t - tt) < Math.abs(st.R.t[j] - tt)) j = i; });
-      const xx = F.x(st.R.t[j]); line.setAttribute('x1', xx); line.setAttribute('x2', xx); line.setAttribute('visibility', 'visible');
+      const xx = F.x(st.R.t[j]); setL('x1', xx); setL('x2', xx); setL('visibility', 'visible');
+      if (C.tipRows) { showTip(`<b>${fmt(st.R.t[j], 2)} h</b><br>` + C.tipRows(j).slice(0, 16).join('<br>'), e); return; }
       const rows = C.vis.map(s => [s, s.y[j], s.err[j]]).filter(r => Number.isFinite(r[1])).sort((a, b) => b[1] - a[1]).slice(0, 14);
       showTip(`<b>${fmt(st.R.t[j], 2)} h</b><br>` + rows.map(([s, v, er]) => `<span class="dot" style="background:${s.color}"></span>${esc(s.label)}: ${fmt(v, 3)}${Number.isFinite(er) && st.D.err !== 'none' ? ' ± ' + fmt(er, 3) : ''}`).join('<br>'), e);
     });
-    paper.addEventListener('mouseleave', () => { hideTip(); const l = paper.querySelector('.xhair'); l && l.setAttribute('visibility', 'hidden'); });
+    paper.addEventListener('mouseleave', () => { hideTip(); paper.querySelectorAll('.xhair').forEach(l => l.setAttribute('visibility', 'hidden')); });
   }
   function curveRows(series) {
     const head = ['Time (h)']; series.forEach(s => head.push(s.label + ' mean', s.label + ' ' + (Charts.ERR_LABEL[st.D.err] || 'err')));
@@ -2726,13 +3147,17 @@ const App = (() => {
 
   /* ---------- GROWTH RATE ---------- */
   function viewRate() {
-    const D = st.D;
-    const series = seriesFor('rate');
-    const C = Charts.timecourse({ series, t: st.R.t, W: D.w, H: D.h, xlab: D.xlab, ylab: 'Specific growth rate µ (h⁻¹)' + (D.err !== 'none' ? ' ' + Charts.ERR_LABEL[D.err] : ''),
+    const D = st.D, V = st.V;
+    const rd = dual() ? (V.rateRead || 'od') : 'od', key = 'rate:' + rd;
+    const series = seriesFor(rd === 'fl' ? 'flrate' : 'rate');
+    const what = rd === 'fl' ? 'ln(fluorescence)' : 'ln(OD)';
+    const C = Charts.timecourse({ series, t: st.R.t, W: D.w, H: D.h, xlab: D.xlab, ylab: (rd === 'fl' ? 'Specific rate of fluorescence increase (h⁻¹)' : 'Specific growth rate µ (h⁻¹)') + (D.err !== 'none' ? ' ' + Charts.ERR_LABEL[D.err] : ''),
       title: D.title, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg, legend: D.legend, lw: D.lw, ps: D.ps, points: D.points, showWells: D.wells,
-      errKind: D.err, errStyle: D.errStyle, zero: false, zeroLine: true, zoom: st.V.zoom.rate });
-    $('view').innerHTML = `<div class="card">${timeToolbar(`<p class="note" style="margin:0;max-width:70ch">Slope of ln(OD) in a sliding window of ${st.R && Object.values(st.R.wells).find(w => w.mf) ? Object.values(st.R.wells).find(w => w.mf).mf.window : '–'} readings (set by "µmax window"). Readings below the lowest usable OD (${st.S.odMin}) are skipped, so the trace starts once cells are detectable. The peak of each trace is µmax.</p>${zoomBarHtml('rate')}`)}${paperHtml(C.svg)}</div>`;
-    bindLegend(); bindCrosshair(C, 'h⁻¹'); bindZoom(C, 'rate');
+      errKind: D.err, errStyle: D.errStyle, zero: false, zeroLine: true, zoom: st.V.zoom[key] });
+    const thr = rd === 'fl' ? `lowest usable F (${fmt(st.R.fl.fMin, 0)})` : `lowest usable OD (${st.S.odMin})`;
+    $('view').innerHTML = `<div class="card">${timeToolbar(`${dual() ? `<label class="fld"><span>Read</span><select id="rRead"><option value="od">OD</option><option value="fl">Fluorescence</option></select></label>` : ''}<p class="note" style="margin:0;max-width:62ch">Slope of ${what} in a sliding window of ${st.R && Object.values(st.R.wells).find(w => w.mf) ? Object.values(st.R.wells).find(w => w.mf).mf.window : '–'} readings (set by "µmax window"). Readings below the ${thr} are skipped. The peak of each trace is ${rd === 'fl' ? 'F µmax' : 'µmax'}.</p>${zoomBarHtml(key)}`)}${paperHtml(C.svg)}</div>`;
+    if ($('rRead')) { $('rRead').value = rd; $('rRead').onchange = e => { V.rateRead = e.target.value; render(); }; }
+    bindLegend(); bindCrosshair(C, 'h⁻¹'); bindZoom(C, key);
     st.lastSvg = C.svg; st.lastName = 'growth_rate'; st.lastTable = curveRows(series);
   }
 
@@ -2749,11 +3174,14 @@ const App = (() => {
   }
   function viewPanels() {
     const D = st.D, V = st.V, cm = colorMap(), R = st.R;
+    const rd = dual() ? (V.panelRead || 'both') : 'od';
     const panels = chartGroups().filter(g => !g.hidden).map(g => {
-      const gr = R.groups[g.id], mu = gr.metrics.mu;
+      const gr = R.groups[g.id], mu = gr.metrics.mu, fmu = gr.metrics.fmu;
+      const sub = !isSampleRole(g.role) ? ROLES[g.role].toLowerCase()
+        : rd === 'fl' ? (fmu && Number.isFinite(fmu.mean) ? `F µ ${fmt(fmu.mean, 2)} h⁻¹` : '')
+        : (Number.isFinite(mu.mean) ? `µ ${fmt(mu.mean, 2)} h⁻¹` : '') + (rd === 'both' && fmu && Number.isFinite(fmu.mean) ? ` · F µ ${fmt(fmu.mean, 2)}` : '');
       return {
-        id: g.id, label: g.name, color: cm[g.id],
-        sub: g.role === 'blank' ? 'blank' : Number.isFinite(mu.mean) ? `µ ${fmt(mu.mean, 2)} h⁻¹` : '',
+        id: g.id, label: g.name, color: cm[g.id], sub,
         wells: g.wells.filter(w => R.wells[w]).map(w => {
           const r = R.wells[w];
           let tangent = null;
@@ -2762,14 +3190,18 @@ const App = (() => {
             const ts = [], ys = []; for (let i = 0; i <= 40; i++) { const t = lag + (t2 - lag) * i / 40; ts.push(t); ys.push(Math.exp(a + mu * t)); }
             tangent = [ts, ys];
           }
+          if (rd === 'fl') return { id: w, t: R.t, y: (r.fl ? r.fl.smooth : []).map(v => V.panelLog ? Math.max(v, R.fl.fMin) : v), excl: st.excluded.has(w), fit: null, tangent: null };
           return { id: w, t: R.t, y: r.smooth.map(v => V.panelLog ? Math.max(v, st.S.floor) : v), excl: st.excluded.has(w),
-            fit: V.panelFit === 'none' || V.panelFit === 'tangent' ? null : fitCurveFor(r, V.panelFit), tangent };
+            fit: V.panelFit === 'none' || V.panelFit === 'tangent' ? null : fitCurveFor(r, V.panelFit), tangent,
+            y2: rd === 'both' && r.fl ? r.fl.smooth : null };
         }),
       };
     });
-    const C = Charts.panels({ panels, W: Math.max(D.w, 600), cols: V.panelCols || 0, ylog: V.panelLog, logFloor: st.S.floor, xlab: D.xlab, ylab: 'OD', title: D.title,
+    const C = Charts.panels({ panels, W: Math.max(D.w, 600), cols: V.panelCols || 0, ylog: V.panelLog, logFloor: rd === 'fl' ? R.fl.fMin : st.S.floor, xlab: D.xlab,
+      ylab: rd === 'fl' ? 'F (RFU)' : 'OD', y2lab: 'F (RFU), dashed', title: D.title,
       fsAxis: D.fsAxis, fsTick: D.fsTick, lw: Math.max(1, D.lw * 0.75), ps: Math.max(1.5, D.ps), ymin: D.ymin, ymax: D.ymax });
     $('view').innerHTML = `<div class="card"><div class="toolbar">
+      ${dual() ? `<label class="fld"><span>Read</span><select id="pRead"><option value="both">OD + fluorescence</option><option value="od">OD</option><option value="fl">Fluorescence</option></select></label>` : ''}
       <label class="fld"><span>Overlay</span><select id="pFit">
         <option value="auto">Fitted curve (model used for parameters, else best)</option>
         ${Models.list.filter(m => st.S.models[m.id]).map(m => `<option value="${m.id}">${m.name} fit</option>`).join('')}
@@ -2779,10 +3211,11 @@ const App = (() => {
       <div class="grow"></div><span class="status">Points are readings, lines are fits. Click a point to exclude or include that well.</span></div>
       ${paperHtml(C.svg)}</div>`;
     $('pFit').value = V.panelFit; $('pLog').value = V.panelLog ? '1' : '0'; $('pCols').value = String(V.panelCols || 0);
+    if ($('pRead')) { $('pRead').value = rd; $('pRead').onchange = e => { V.panelRead = e.target.value; render(); }; }
     $('pFit').onchange = e => { V.panelFit = e.target.value; render(); };
     $('pLog').onchange = e => { V.panelLog = e.target.value === '1'; render(); };
     $('pCols').onchange = e => { V.panelCols = +e.target.value; render(); };
-    bindHits(C.hits, h => `<b>${h.well}</b> · ${esc(h.group)}<br>${fmt(h.t, 2)} h · OD ${fmt(h.v, 3)}<br>${wellSummary(h.well)}<br><i>click to ${st.excluded.has(h.well) ? 'include' : 'exclude'}</i>`,
+    bindHits(C.hits, h => `<b>${h.well}</b> · ${esc(h.group)}<br>${fmt(h.t, 2)} h · ${rd === 'fl' ? 'F ' + fmt(h.v, 0) : 'OD ' + fmt(h.v, 3)}<br>${wellSummary(h.well)}<br><i>click to ${st.excluded.has(h.well) ? 'include' : 'exclude'}</i>`,
       h => { st.excluded.has(h.well) ? st.excluded.delete(h.well) : st.excluded.add(h.well); exclusionChanged(); });
     st.lastSvg = C.svg; st.lastName = 'curve_panels';
     st.lastTable = wellRows();
@@ -2790,7 +3223,7 @@ const App = (() => {
   function wellSummary(w) {
     const r = st.R.wells[w]; if (!r || !r.params) return '';
     const p = r.params;
-    return r.role === 'blank' ? `ΔOD ${fmt(p.dOD, 3)}` : `µ ${fmt(p.mu, 3)} h⁻¹ · lag ${fmt(p.lag, 2)} h · max ${fmt(p.ymax, 3)}${r.best ? ' · best: ' + Models.byId[r.best].name : ''}${r.flags.length ? '<br>⚠ ' + r.flags.map(esc).join('; ') : ''}`;
+    return isBlankRole(r.role) ? `ΔOD ${fmt(p.dOD, 3)}` : `µ ${fmt(p.mu, 3)} h⁻¹ · lag ${fmt(p.lag, 2)} h · max ${fmt(p.ymax, 3)}${r.best ? ' · best: ' + Models.byId[r.best].name : ''}${r.flags.length ? '<br>⚠ ' + r.flags.map(esc).join('; ') : ''}`;
   }
   function bindHits(hits, html, click) {
     const paper = $('paper');
@@ -2805,7 +3238,7 @@ const App = (() => {
   }
 
   /* ---------- PARAMETERS (bars) ---------- */
-  function sampleGroupsWithData() { return st.groups.filter(g => g.role !== 'blank' && st.R.groups[g.id] && st.R.groups[g.id].n); }
+  function sampleGroupsWithData() { return st.groups.filter(g => isSampleRole(g.role) && st.R.groups[g.id] && st.R.groups[g.id].n); }
   function compare(metric, mode, refId) {
     const gs = sampleGroupsWithData().filter(g => !g.hidden);
     const vals = g => st.R.groups[g.id].metrics[metric].values.filter(Number.isFinite);
@@ -2822,10 +3255,14 @@ const App = (() => {
     return { rows, anova, gs };
   }
   function metricOptions(sel, skipR2) {
-    return METRICS.filter(m => !(skipR2 && m.key === 'r2')).map(m => `<option value="${m.key}"${m.key === sel ? ' selected' : ''}>${esc(m.label)}${m.unit ? ' (' + esc(m.unit) + ')' : ''}</option>`).join('');
+    const opt = m => `<option value="${m.key}"${m.key === sel ? ' selected' : ''}>${esc(m.label)}${m.unit ? ' (' + esc(m.unit) + ')' : ''}</option>`;
+    const od = METRICS.filter(m => !m.fl && !(skipR2 && m.key === 'r2')), fl = METRICS.filter(m => m.fl);
+    return fl.length ? `<optgroup label="Growth (OD)">${od.map(opt).join('')}</optgroup><optgroup label="Fluorescence">${fl.map(opt).join('')}</optgroup>` : od.map(opt).join('');
   }
+
   const refOptions = sel => `<option value="">(no comparison)</option>` + sampleGroupsWithData().map(g => `<option value="${g.id}"${g.id === sel ? ' selected' : ''}>${esc(g.name)}</option>`).join('');
   function viewBars() {
+    if (!METRIC[st.V.barMetric]) st.V.barMetric = 'mu';
     const D = st.D, V = st.V, cm = colorMap(), R = st.R, mk = V.barMetric, md = METRIC[mk];
     const gs = sampleGroupsWithData().filter(g => !g.hidden);
     let stars = {};
@@ -2863,7 +3300,9 @@ const App = (() => {
 
   /* ---------- STATISTICS ---------- */
   function viewStats() {
-    const V = st.V, mk = V.statMetric, md = METRIC[mk];
+    const V = st.V;
+    if (!METRIC[V.statMetric]) V.statMetric = 'mu';
+    const mk = V.statMetric, md = METRIC[mk];
     const c = compare(mk, V.statMode, V.ref);
     const gs = c.gs;
     let h = `<div class="card"><div class="toolbar">
@@ -2878,6 +3317,8 @@ const App = (() => {
       sumRows.push([g.name, s.n, s.mean, s.sd, s.sem, s.ci, s.cv, f.length ? Math.min(...f) : NaN, f.length ? Math.max(...f) : NaN]);
     }
     h += tableHtml(sumRows, md.d);
+    if (gs.length && gs.every(g => st.R.groups[g.id].metrics[mk].n < 2))
+      h += `<div class="msg warn" style="margin-top:12px">Every group has a single well, so there is no spread to test against. The values above are the single measurements. To compare strains statistically, measure replicate wells and put them in one group on the Plate tab (drag across them and press <b>Make group</b>).</div>`;
     h += `<h2 style="margin-top:16px">Comparisons <small>Welch's t-test (does not assume equal variances), p-values adjusted for multiple comparisons by Holm's method</small></h2>`;
     if (c.anova) h += `<p class="note">Welch's one-way ANOVA across ${c.anova.k} groups: F(${fmt(c.anova.df1, 0)}, ${fmt(c.anova.df2, 1)}) = ${fmt(c.anova.F, 2)}, <b>p = ${pfmt(c.anova.p)}</b></p>`;
     const cmpRows = [['Group A', 'Group B', 'Mean A', 'Mean B', 'Difference (B − A)', 'Fold (B / A)', 't', 'df', 'p', 'p (Holm)', '']];
@@ -2908,9 +3349,15 @@ const App = (() => {
   /* ---------- RESULTS TABLE ---------- */
   const WCOLS = [['well', 'Well'], ['group', 'Group'], ['role', 'Role'], ['mu', 'µmax (h⁻¹)'], ['td', 'Doubling (h)'], ['lag', 'Lag (h)'], ['ymax', 'Max OD'], ['dOD', 'ΔOD'],
     ['final', 'Final OD'], ['auc', 'AUC'], ['tmid', 't half-max (h)'], ['tthr', 't to OD thr (h)'], ['vmax', 'Max dOD/dt'], ['r2', 'R²'], ['best', 'Best model'], ['flags', 'Notes']];
+  // well-table columns; fluorescence parameters are added when a fluorescence read is analysed
+  function wcols() {
+    const fl = METRICS.filter(m => m.fl).map(m => [m.key, m.label + (m.unit ? ` (${m.unit})` : '')]);
+    return [...WCOLS.slice(0, 14), ...fl, ...WCOLS.slice(14)];
+  }
   function wellRows(includeModels) {
     const R = st.R;
-    const head = WCOLS.map(c => c[1]);
+    const cols = wcols();
+    const head = cols.map(c => c[1]);
     const mods = Models.list.filter(m => st.S.models[m.id]);
     if (includeModels) for (const m of mods) head.push(`${m.name} µ`, `${m.name} lag`, `${m.name} max OD`, `${m.name} R²`, `${m.name} AICc`);
     head.push('Excluded');
@@ -2919,7 +3366,7 @@ const App = (() => {
     for (const w of order) {
       const r = R.wells[w]; if (!r) continue;
       const g = r.group ? groupById(r.group) : null, p = r.params || {};
-      const row = [w, g ? g.name : '', r.role, p.mu, p.td, p.lag, p.ymax, p.dOD, p.final, p.auc, p.tmid, p.tthr, p.vmax, p.r2, r.best ? Models.byId[r.best].name : '', r.flags.join('; ')];
+      const row = cols.map(([k]) => k === 'well' ? w : k === 'group' ? (g ? g.name : '') : k === 'role' ? r.role : k === 'best' ? (r.best ? Models.byId[r.best].name : '') : k === 'flags' ? r.flags.join('; ') : p[k]);
       if (includeModels) for (const m of mods) { const f = r.fits && r.fits[m.id]; row.push(...(f && f.ok ? [f.mu, f.lag, f.ymax, f.r2, f.aicc] : [NaN, NaN, NaN, NaN, NaN])); }
       row.push(st.excluded.has(w) ? 'yes' : '');
       rows.push(row);
@@ -2950,7 +3397,7 @@ const App = (() => {
         return String(x).localeCompare(String(y), undefined, { numeric: true }) * V.sortDir;
       });
     }
-    const decimals = i => { const key = V.tableKind === 'wells' ? (WCOLS[i] || [])[0] : null; if (key && METRIC[key]) return METRIC[key].d; const h = head[i]; const mm = METRICS.find(m => h.startsWith(m.label)); return mm ? mm.d : 3; };
+    const decimals = i => { const key = V.tableKind === 'wells' ? (wcols()[i] || [])[0] : null; if (key && METRIC[key]) return METRIC[key].d; const h = head[i]; const mm = METRICS.find(m => h.startsWith(m.label)); return mm ? mm.d : 3; };
     let h = `<div class="card"><div class="toolbar">
       <label class="fld"><span>Show</span><select id="tKind"><option value="wells">Every well</option><option value="groups">Group means</option></select></label>
       ${V.tableKind === 'wells' ? `<label class="chk"><input type="checkbox" id="tModels" ${V.showModels ? 'checked' : ''}> Add columns for every fitted model</label>` : ''}
@@ -2984,6 +3431,10 @@ const App = (() => {
     const b = block(), R = st.R;
     const ws = [...st.used].sort((a, c) => { const A = Plate.parse(a), B = Plate.parse(c); return A.r - B.r || A.c - B.c; });
     if (kind === 'corr') return [['Time (h)', ...ws], ...R.t.map((t, j) => [+t.toFixed(4), ...ws.map(w => R.wells[w].corr[j])])];
+    if (kind === 'fcorr' || kind === 'fod' || kind === 'fraw') {
+      const key = { fcorr: 'corr', fod: 'fod', fraw: 'raw' }[kind];
+      return [['Time (h)', ...ws], ...R.t.map((t, j) => [+t.toFixed(4), ...ws.map(w => R.wells[w].fl ? R.wells[w].fl[key][j] : NaN)])];
+    }
     const hasT = b.temps.some(Number.isFinite);
     return [['Time (h)', ...(hasT ? ['Temp (°C)'] : []), ...ws], ...b.times.map((t, i) => [+t.toFixed(4), ...(hasT ? [b.temps[i]] : []), ...ws.map(w => b.wells[w][i])])];
   }
@@ -2992,7 +3443,7 @@ const App = (() => {
     const rows = rawRows(V.rawKind);
     const b = block();
     let h = `<div class="card"><div class="toolbar">
-      <label class="fld"><span>Values</span><select id="rKind"><option value="raw">Raw OD as read</option><option value="corr">Blank-corrected (analysis window)</option></select></label>
+      <label class="fld"><span>Values</span><select id="rKind"><option value="raw">Raw OD as read</option><option value="corr">Blank-corrected (analysis window)</option>${dual() ? '<option value="fraw">Raw fluorescence</option><option value="fcorr">Corrected fluorescence</option><option value="fod">F/OD</option>' : ''}</select></label>
       <div class="grow"></div><span class="status">${esc(b.sheet)} · ${esc(b.label)} · ${b.layout === 'rows' ? 'wells in rows' : b.layout === 'plain' ? 'plain table' : 'wells in columns'} · time unit ${esc(b.timeUnit)}</span></div>
       <div class="tbl-wrap"><table><thead><tr>${rows[0].map(c => `<th class="num">${esc(c)}</th>`).join('')}</tr></thead><tbody>`;
     for (const r of rows.slice(1)) h += '<tr>' + r.map((v, i) => `<td class="num">${i === 0 ? fmt(v, 3) : fmt(v, 3)}</td>`).join('') + '</tr>';
@@ -3020,7 +3471,7 @@ const App = (() => {
     const b = block(), S = st.S, R = st.R, D = st.D, used = new Set();
     const c = (...keys) => { keys.forEach(k => used.add(k)); return '(' + keys.map(k => CITE[k]).join('; ') + ')'; };
     const n2 = v => +v.toFixed(2);
-    const samples = st.groups.filter(g => g.role !== 'blank' && R.groups[g.id] && R.groups[g.id].n);
+    const samples = st.groups.filter(g => isSampleRole(g.role) && R.groups[g.id] && R.groups[g.id].n);
     const blanks = st.groups.filter(g => g.role === 'blank' && R.groups[g.id] && R.groups[g.id].n);
     const reps = samples.map(g => R.groups[g.id].n);
     const repTxt = reps.length ? (Math.min(...reps) === Math.max(...reps) ? `${reps[0]}` : `${Math.min(...reps)}–${Math.max(...reps)}`) : '⟦n⟧';
@@ -3033,11 +3484,18 @@ const App = (() => {
     const excl = [...st.excluded].filter(w => st.used.has(w));
     const out = [];
 
+    const meta = b.meta || {}, fb = dual() ? flBlock() : null, fm = fb ? (fb.meta || {}) : {};
+    const plateTxt = meta.plate ? `(${meta.plate}) ⟦culture volume per well⟧` : '⟦plate type, culture volume per well⟧';
+    const readerTxt = meta.device ? `a ${meta.device} plate reader ⟦manufacturer⟧` : 'a ⟦plate reader make and model⟧';
+    const flTxt = fb ? ` ${fb.label} fluorescence was read ${/bottom/i.test(fm.mode || '') ? 'from the bottom' : /top/i.test(fm.mode || '') ? 'from the top' : ''} at the same time points`
+      + (fm.ex || fm.em ? ` (excitation ${fm.ex || '⟦…⟧'} nm, emission ${fm.em || '⟦…⟧'} nm${fm.gain ? ', gain ' + fm.gain : ''})` : ' ⟦excitation / emission wavelengths, gain⟧') + '.' : '';
     out.push({ h: 'Growth measurements', p: [
-      `Bacterial growth was monitored in ${st.fmt.n}-well plates ⟦plate type, culture volume per well⟧ in a ⟦plate reader make and model⟧ at ${tempTxt} ⟦with continuous / intermittent shaking⟧. `
-      + `${measure.charAt(0).toUpperCase() + measure.slice(1)} was read every ${Math.round(dt)} min for ${n2(t[t.length - 1] - t[0])} h (${t.length} readings). `
-      + `⟦Strains and media⟧ were inoculated at ⟦starting OD or dilution⟧. Each condition was measured in ${repTxt} replicate wells`
-      + (blanks.length ? `, and medium without cells was included as a blank${blanks.length > 1 ? ' for each medium' : ''}.` : '.'),
+      `Bacterial growth was monitored in ${st.fmt.n}-well plates ${plateTxt} in ${readerTxt} at ${tempTxt} ⟦with continuous / intermittent shaking⟧. `
+      + `${measure.charAt(0).toUpperCase() + measure.slice(1)} was read every ${Math.round(dt)} min for ${n2(t[t.length - 1] - t[0])} h (${t.length} readings).${flTxt} `
+      + `⟦Strains and media⟧ were inoculated at ⟦starting OD or dilution⟧. ` + (repTxt === '1' ? 'Each strain was measured in a single well' : `Each condition was measured in ${repTxt} replicate wells`)
+      + (blanks.length ? `, and medium without cells was included as a blank${blanks.length > 1 ? ' for each medium' : ''}` : '')
+      + (fb && st.groups.some(g => g.role === 'dyeblank') ? ', with medium plus dye but no cells as the fluorescence background' : '')
+      + (fb && st.groups.some(g => g.role === 'nodye') ? ' and cells without dye as the autofluorescence control' : '') + '.',
     ] });
 
     const bl = {
@@ -3051,7 +3509,18 @@ const App = (() => {
     if (+S.smooth > 1) proc += ` Curves were smoothed with a centred ${S.smooth}-point moving average.`;
     if (S.tmin != null || S.tmax != null) proc += ` Analysis was restricted to ${S.tmin != null ? S.tmin : n2(t[0])}–${S.tmax != null ? S.tmax : n2(t[t.length - 1])} h.`;
     if (excl.length) proc += ` ${excl.length} well${excl.length > 1 ? 's were' : ' was'} excluded after visual inspection (${Plate.compact(excl)}) ⟦give the reason⟧.`;
-    out.push({ h: 'Data processing', p: [proc] });
+    const procP = [proc];
+    if (fb) {
+      const F = st.R.fl;
+      let fp = F.bgName === 'dye blank' ? 'Fluorescence was corrected by subtracting, at every time point, the mean fluorescence of the medium-plus-dye wells without cells.'
+        : F.bgName === 'medium blank' ? 'Fluorescence was corrected by subtracting, at every time point, the mean fluorescence of the medium-only wells.'
+        : 'No fluorescence background was subtracted ⟦no blank wells were defined⟧.';
+      if (F.autofl) fp += ` Cell autofluorescence was removed as k × OD, where k = ${fmt(F.k, 1)} RFU per OD unit was estimated by least-squares regression through the origin of the fluorescence of cells without dye (minus medium) against their blank-corrected OD (${F.kN} readings with OD ≥ ${S.odMin}).`;
+      if (+S.smooth > 1) fp += ` Fluorescence curves were smoothed in the same way as OD.`;
+      if (S.fStart != null && S.fStart !== '') fp += ` Fluorescence parameters were calculated from ${S.fStart} h onwards ⟦reason, e.g. dye equilibration⟧.`;
+      procP.push(fp);
+    }
+    out.push({ h: 'Data processing', p: procP });
 
     const win = Math.max(3, Math.round(S.winH / (dt / 60)) + 1);
     const models = Models.list.filter(m => S.models[m.id]);
@@ -3074,11 +3543,22 @@ const App = (() => {
     }
     p2.push(`The area under the curve (AUC) was calculated by the trapezoidal rule, ΔOD as maximum minus starting OD, and the time to reach OD ${S.odThr} by linear interpolation. Wells with ΔOD < ${S.minGrowth} were classified as showing no growth and were not fitted.`);
     out.push({ h: 'Growth parameters', p: [par, ...p2] });
+    if (fb) {
+      const F = st.R.fl, lv = parseLevels(S.fodLevels);
+      out.push({ h: 'Fluorescence parameters', p: [
+        `Fluorescence per unit biomass (F/OD) was calculated as corrected fluorescence divided by blank-corrected OD at each time point, only where OD ≥ ${S.odMin}.`
+        + (lv.length ? ` To compare strains at the same growth stage rather than the same time, F/OD was also read at OD ${lv.join(', ')} by linear interpolation at the first time each OD was reached.` : '')
+        + ` The slope of fluorescence against OD (dF/dOD) was calculated by linear regression over the readings with OD between ${S.odMin} and ${S.odLinMax} or 60% of the maximum OD, whichever was lower.`,
+        `The maximum specific rate of fluorescence increase (F µmax) was calculated as for OD, from the steepest slope of ln(corrected fluorescence) in the same sliding window, using readings with corrected fluorescence ≥ ${fmt(F.fMin, 0)} RFU. `
+        + `ΔF, maximum dF/dt, the area under the fluorescence curve and the time to half-maximal fluorescence were calculated as for OD. The onset delay was defined as the time at which fluorescence reached 10% of its rise minus the time at which OD reached 10% of its rise.`
+        + ` OD readings above ${S.odLinMax} were treated with caution because plate-reader absorbance is no longer proportional to cell density at high OD ⟦check the linear range for your reader and path length⟧.`,
+      ] });
+    }
 
     const errWord = { sd: 'standard deviation (SD)', sem: 'standard error of the mean (SEM)', ci: '95% confidence interval', none: 'standard deviation (SD)' }[D.err];
     const ref = groupById(st.V.ref) || samples[0];
-    let stat = `Values are given as mean ± ${errWord} of n = ${repTxt} replicate wells. `;
-    if (samples.length > 1) {
+    let stat = repTxt === '1' ? 'Each strain was measured in a single well, so no statistical tests between strains were performed. ' : `Values are given as mean ± ${errWord} of n = ${repTxt} replicate wells. `;
+    if (samples.length > 1 && repTxt !== '1') {
       stat += st.V.statMode === 'all'
         ? `All pairs of conditions were compared with Welch's unequal-variance t-test ${c('welch47')}`
         : `Each condition was compared with ${ref ? ref.name : '⟦reference condition⟧'} using Welch's unequal-variance t-test ${c('welch47')}`;
@@ -3086,7 +3566,7 @@ const App = (() => {
       if (samples.length > 2) stat += ` Overall differences among conditions were tested with Welch's one-way ANOVA ${c('welch51')}.`;
       stat += ' Adjusted p < 0.05 was considered significant.';
     }
-    stat += ' ⟦State whether the replicate wells come from independent cultures or experiments; wells from one culture on one plate are technical replicates.⟧';
+    stat = stat.trim() + (repTxt === '1' ? ' ⟦Repeat the experiment with independent cultures to test differences statistically.⟧' : ' ⟦State whether the replicate wells come from independent cultures or experiments; wells from one culture on one plate are technical replicates.⟧');
     out.push({ h: 'Statistics', p: [stat] });
     out.push({ h: 'Software', p: [`All analyses were performed with Sigmoid v${APP_VERSION} (Bacterial Growth Analysis), a browser-based application ⟦add a link or "available on request"⟧.`] });
     const refs = [...used].sort().map(k => REFS[k]);
@@ -3122,6 +3602,12 @@ const App = (() => {
     const name = baseName();
     if (kind === 'csv-wells') Export.download(new Blob(['\uFEFF' + Export.csv(wellRows(true))], { type: 'text/csv' }), name + '_wells.csv');
     else if (kind === 'csv-groups') Export.download(new Blob(['\uFEFF' + Export.csv(groupRows())], { type: 'text/csv' }), name + '_groups.csv');
+    else if (kind === 'csv-fl') {
+      if (!dual()) { flash('No fluorescence read is being analysed. Pick one under Data → Fluorescence read.'); return; }
+      const a = rawRows('fcorr'), q = rawRows('fod');
+      const rows = [['Corrected fluorescence'], ...a, [], ['F/OD (RFU per OD unit, shown where OD ≥ ' + st.S.odMin + ')'], ...q];
+      Export.download(new Blob(['\uFEFF' + Export.csv(rows)], { type: 'text/csv' }), name + '_fluorescence.csv');
+    }
     else if (kind === 'csv-data') Export.download(new Blob(['\uFEFF' + Export.csv(rawRows('corr'))], { type: 'text/csv' }), name + '_blank_corrected.csv');
     else if (kind === 'methods') Export.download(new Blob(['\uFEFF' + methodsText().replace(/\n/g, '\r\n')], { type: 'text/plain' }), name + '_methods.txt');
     else if (kind === 'xlsx') Export.download(Export.xlsx(workbookSheets()), name + '_Sigmoid.xlsx');
@@ -3161,12 +3647,23 @@ const App = (() => {
     sheets.push({ name: 'Group mean curves', rows: gm });
     sheets.push({ name: 'Blank-corrected OD', rows: rawRows('corr') });
     sheets.push({ name: 'Raw OD', rows: rawRows('raw') });
+    if (dual()) {
+      sheets.push({ name: 'Corrected fluorescence', rows: rawRows('fcorr') });
+      sheets.push({ name: 'F per OD', rows: rawRows('fod') });
+      sheets.push({ name: 'Raw fluorescence', rows: rawRows('fraw') });
+      const gf = [['Time (h)']]; const gl = st.groups.filter(g => st.R.groups[g.id] && st.R.groups[g.id].n);
+      gl.forEach(g => gf[0].push(g.name + ' F mean', g.name + ' F SD', g.name + ' F/OD mean', g.name + ' F/OD SD'));
+      st.R.t.forEach((t, j) => gf.push([+t.toFixed(4), ...gl.flatMap(g => { const gr = st.R.groups[g.id]; return [gr.flMean[j], gr.flSd[j], gr.fodMean[j], gr.fodSd[j]]; })]));
+      sheets.push({ name: 'Group mean fluorescence', rows: gf });
+    }
     sheets.push({ name: 'Layout', rows: layoutRows() });
     sheets.push({ name: 'Methods', rows: [['Methods (auto-written – check the parts in square brackets)'], ...methodsText().split('\n').map(l => [l])] });
     sheets.push({ name: 'Settings', rows: [['Setting', 'Value'], ['Source file', st.fileName || ''], ['Measurement block', block().label], ['Sigmoid version', APP_VERSION],
       ['Blank correction', S.blankMode], ['Blank over time', S.blankAs], ['Smoothing (points)', S.smooth], ['Analysis window (h)', `${S.tmin ?? 'start'} – ${S.tmax ?? 'end'}`],
       ['µmax/lag source', S.source], ['µmax window (h)', S.winH], ['Window min R²', S.r2min], ['Lowest usable OD', S.odMin], ['Starting OD floor', S.floor],
       ['Min growth ΔOD', S.minGrowth], ['OD threshold', S.odThr], ['Models fitted', Models.list.filter(m => S.models[m.id]).map(m => m.name).join(', ')], ['Stop fits at peak on decline', S.trimDecline ? 'yes' : 'no'],
+      ...(dual() ? [['Fluorescence read', st.R.fl.label], ['F background subtracted', st.R.fl.bgName], ['Autofluorescence correction', st.R.fl.autofl ? `on (k = ${fmt(st.R.fl.k, 2)} RFU per OD unit)` : 'off'],
+        ['Lowest usable F', st.R.fl.fMin], ['Analyse F from (h)', S.fStart ?? 'start'], ['F/OD at OD', S.fodLevels], ['Highest reliable OD', S.odLinMax]] : []),
       ['Excluded wells', [...st.excluded].join(', ')], ['Exported', new Date().toISOString()]] });
     return sheets;
   }
@@ -3175,15 +3672,15 @@ const App = (() => {
     setTimeout(() => { el.style.color = ''; }, 3000);
   }
   function saveProject() {
-    const proj = { app: 'Sigmoid', version: 2, fileName: st.fileName, blockIdx: st.blockIdx,
-      blocks: st.blocks.map(b => ({ label: b.label, sheet: b.sheet, layout: b.layout, timeUnit: b.timeUnit, times: b.times, temps: b.temps, wells: b.wells, listedWells: b.listedWells, aliases: b.aliases, forcedFormat: b.forcedFormat, overflow: b.overflow })),
+    const proj = { app: 'Sigmoid', version: 3, fileName: st.fileName, blockIdx: st.blockIdx, flIdx: st.flIdx,
+      blocks: st.blocks.map(b => ({ label: b.label, sheet: b.sheet, layout: b.layout, timeUnit: b.timeUnit, times: b.times, temps: b.temps, wells: b.wells, listedWells: b.listedWells, aliases: b.aliases, forcedFormat: b.forcedFormat, overflow: b.overflow, meta: b.meta })),
       groups: st.groups, excluded: [...st.excluded], S: st.S, D: st.D, V: st.V };
     Export.download(new Blob([JSON.stringify(proj)], { type: 'application/json' }), baseName() + '.sigmoid.json');
   }
   function restoreProject(p, name) {
     if (p.app !== 'Sigmoid' && p.app !== 'GrowthScope') { message('This .json file is not a Sigmoid project.', 'err'); return; }
     st.fileName = p.fileName || name; st.blocks = p.blocks.map((b, i) => Object.assign(b, { id: i })); st.sheetsCache = null;
-    st.groups = p.groups; Layout.resetIds(st.groups); st.excluded = new Set(p.excluded || []);
+    st.groups = p.groups; Layout.resetIds(st.groups); st.excluded = new Set(p.excluded || []); st.flIdx = p.flIdx ?? null;
     st.S = Object.assign(clone(DEFAULT_SETTINGS), p.S); st.D = Object.assign(clone(DEFAULT_DISPLAY), p.D); Object.assign(st.V, p.V || {});
     st.cache.clear(); writeInputs();
     message(`Project restored: ${esc(st.fileName)} with ${st.groups.length} groups.`);
@@ -3213,7 +3710,7 @@ const App = (() => {
       names[w] = `${sn} ${dn}`;
     }
     const b = { label: 'OD600 (simulated demo)', sheet: 'Demo', layout: 'columns', timeUnit: 'h', times, temps: times.map(() => 30), wells, listedWells: listed, overflow: 0, id: 0 };
-    st.fileName = 'Simulated demo plate'; st.blocks = [b]; st.sheetsCache = null; st.excluded = new Set(); st.sel.clear(); st.cache.clear();
+    st.fileName = 'Simulated demo plate'; st.blocks = [b]; st.flIdx = null; st.sheetsCache = null; st.excluded = new Set(); st.sel.clear(); st.cache.clear();
     const byName = {}; for (const w in names) (byName[names[w]] = byName[names[w]] || []).push(w);
     st.groups = Object.entries(byName).map(([n, ws]) => Layout.newGroup(n, ws, /blank/i.test(n) ? 'blank' : 'sample'));
     Layout.assignBlanks(st.groups);
