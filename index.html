@@ -101,7 +101,7 @@ code { font-size: .92em; background: var(--panel-2); padding: 0 .3em; border-rad
 /* ---- workbench ---- */
 .bench { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; padding: 16px; align-items: start; }
 @media (max-width: 900px) { .bench { grid-template-columns: minmax(0, 1fr); } }
-.rail { display: grid; gap: 10px; position: sticky; top: 70px; max-height: calc(100vh - 86px); overflow: auto; padding-right: 2px; }
+.rail { display: grid; gap: 10px; position: sticky; top: calc(var(--tb, 58px) + 12px); max-height: calc(100vh - var(--tb, 58px) - 28px); overflow: auto; padding-right: 2px; }
 @media (max-width: 900px) { .rail { position: static; max-height: none; } }
 details.sec { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); }
 details.sec > summary { cursor: pointer; padding: 9px 12px; font-weight: 700; font-size: 13px; list-style: none; display: flex; align-items: center; gap: 8px; }
@@ -133,7 +133,8 @@ details.sec > summary .tag { margin-left: auto; font: 11px var(--f-mono); color:
 /* ---- main ---- */
 .main { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 #view { min-width: 0; display: grid; gap: 14px; }
-.tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line); }
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line);
+  position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--tb, 58px)); z-index: 25; background: var(--bg); padding-top: 6px; margin-top: -6px; }
 .tabs button { border: 0; background: none; padding: 8px 12px; cursor: pointer; font-size: 13.5px; color: var(--muted);
   border-bottom: 2.5px solid transparent; margin-bottom: -1px; }
 .tabs button.on { color: var(--fg); border-bottom-color: var(--accent); font-weight: 700; }
@@ -234,7 +235,7 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
 <header class="topbar">
   <button class="brand" id="brandHome" title="Start over: clears the loaded data and resets everything (Undo brings it back)">
     <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10" fill="#5a3fa6"/><path d="M7 31.5H33" stroke="#fff" stroke-opacity=".35" stroke-width="1.4" stroke-linecap="round"/><path d="M7 29.5C14 29.5 15.5 28.5 18 22.5S22.5 10.5 33 10.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="9" cy="29.3" r="2.1" fill="#f48fb1"/><circle cx="16.6" cy="25.6" r="2.1" fill="#f48fb1"/><circle cx="20" cy="17.2" r="2.1" fill="#f48fb1"/><circle cx="25.5" cy="12" r="2.1" fill="#f48fb1"/><circle cx="31.5" cy="10.6" r="2.1" fill="#f48fb1"/></svg>
-    <span class="names"><h1>Sigmoid <span class="ver">v1.3</span></h1><span class="tagline">Bacterial Growth Analysis</span></span>
+    <span class="names"><h1>Sigmoid <span class="ver">v1.4</span></h1><span class="tagline">Bacterial Growth Analysis</span></span>
   </button>
   <div class="filechip" id="fileChip">no data loaded</div>
   <div class="spacer"></div>
@@ -257,6 +258,7 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
         <hr>
         <button data-x="svg">Current chart as SVG (vector)</button>
         <button data-x="png">Current chart as PNG (300 dpi)</button>
+        <button data-x="multi">Save selected groups' charts…</button>
         <button data-x="copy">Copy current table to clipboard</button>
         <button data-x="methods">Methods text (.txt)</button>
       </div>
@@ -2177,7 +2179,7 @@ const Charts = (() => {
       if (o.showPoints) for (const p of it.values) if (Number.isFinite(p.v)) { lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); }
     }
     if (!Number.isFinite(lo)) { lo = 0; hi = 1; }
-    const anyStar = items.some(i => i.star);
+    const anyStar = items.some(i => i.star || i.isRef);
     if (anyStar) hi = hi + (hi - Math.min(lo, 0)) * 0.12;
     let yDom = niceRange(lo, hi, 0.04, o.type === 'bar' || lo >= 0);
     if (Number.isFinite(o.ymin)) yDom[0] = o.ymin;
@@ -2199,14 +2201,23 @@ const Charts = (() => {
       if (it.gapBefore) xcur += slot * 0.6;
       const cxm = xcur + slot / 2, bw = slot * 0.62;
       if (Number.isFinite(it.mean)) {
-        if (o.type === 'bar') body += `<rect x="${cxm - bw / 2}" y="${Math.min(Y(it.mean), base)}" width="${bw}" height="${Math.abs(base - Y(it.mean))}" fill="${it.color}" fill-opacity=".75" stroke="${it.color}" stroke-width="1"/>`;
+        if (o.type === 'bar') body += `<rect x="${cxm - bw / 2}" y="${Math.min(Y(it.mean), base)}" width="${bw}" height="${Math.abs(base - Y(it.mean))}" fill="${it.color}" fill-opacity=".75" stroke="${it.isRef ? '#111' : it.color}" stroke-width="${it.isRef ? 2 : 1}"/>`;
         else body += `<line x1="${cxm - bw * 0.35}" x2="${cxm + bw * 0.35}" y1="${Y(it.mean)}" y2="${Y(it.mean)}" stroke="${it.color}" stroke-width="2.5"/>`;
         if (Number.isFinite(it.err) && it.err > 0) {
           const a = Y(it.mean - (o.type === 'bar' && it.mean >= 0 && false ? 0 : it.err)), b = Y(it.mean + it.err), cap = bw * 0.18;
           body += `<path d="M${cxm},${a}V${b}M${cxm - cap},${b}H${cxm + cap}M${cxm - cap},${a}H${cxm + cap}" stroke="#222" stroke-width="1.2" fill="none"/>`;
         }
       }
-      if (!Number.isFinite(it.mean)) body += `<text x="${cxm}" y="${base - 6}" font-size="${Math.max(8, o.fsTick - 2)}" text-anchor="middle" fill="#888">n.d.</text>`;
+      if (!Number.isFinite(it.mean)) {
+        const fsn = Math.max(8, o.fsTick - 2);
+        body += slot < fsn * 2.6
+          ? `<text transform="translate(${cxm + fsn * 0.35},${base - 6}) rotate(-90)" font-size="${fsn}" fill="#888">n.d.</text>`
+          : `<text x="${cxm}" y="${base - 6}" font-size="${fsn}" text-anchor="middle" fill="#888">n.d.</text>`;
+      }
+      if (it.isRef && Number.isFinite(it.mean)) {
+        const topR = Math.max(it.mean + (Number.isFinite(it.err) ? it.err : 0), ...it.values.map(p => p.v).filter(Number.isFinite));
+        body += `<text x="${cxm}" y="${Y(topR) - 6}" font-size="${Math.max(8, o.fsTick - 1)}" font-weight="bold" text-anchor="middle" fill="#111">ref</text>`;
+      }
       if (o.showPoints) for (const p of it.values) {
         if (!Number.isFinite(p.v)) continue;
         const px = cxm + (rnd() - 0.5) * bw * 0.5, py = Y(p.v);
@@ -2222,6 +2233,8 @@ const Charts = (() => {
       else body += `<text x="${cxm}" y="${ly + o.fsTick * 0.8}" font-size="${o.fsTick}" text-anchor="middle" fill="#222">${esc(it.label)}</text>`;
       xcur += slot;
     });
+    if (Number.isFinite(o.refLine) && o.refLine >= yDom[0] && o.refLine <= yDom[1])
+      body += `<line x1="${F.m.l}" x2="${F.m.l + F.pw}" y1="${Y(o.refLine)}" y2="${Y(o.refLine)}" stroke="#444" stroke-width="1" stroke-dasharray="5 4"/>`;
     if (o.note) body += `<text x="${o.W - 8}" y="${F.m.t - 4 > 10 ? F.m.t - 4 : 12}" font-size="${Math.max(8, o.fsTick - 2)}" text-anchor="end" fill="#666">${esc(o.note)}</text>`;
     return { svg: wrap(o.W, o.H, body), hits };
   }
@@ -2267,11 +2280,11 @@ const Export = (() => {
   const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
   function crc32(u8) { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
 
-  function zip(files) { // files: [{name, data: string}], stored (no compression)
+  function zip(files, type) { // files: [{name, data: string | Uint8Array}], stored (no compression)
     const enc = new TextEncoder(), parts = [], central = [];
     let off = 0;
     for (const f of files) {
-      const name = enc.encode(f.name), data = enc.encode(f.data), crc = crc32(data);
+      const name = enc.encode(f.name), data = typeof f.data === 'string' ? enc.encode(f.data) : f.data, crc = crc32(data);
       const h = new DataView(new ArrayBuffer(30));
       h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
       h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, name.length, true);
@@ -2287,7 +2300,7 @@ const Export = (() => {
     const e = new DataView(new ArrayBuffer(22));
     e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
     e.setUint32(12, csize, true); e.setUint32(16, off, true);
-    return new Blob([...parts, ...central, new Uint8Array(e.buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    return new Blob([...parts, ...central, new Uint8Array(e.buffer)], { type: type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   }
 
   const x = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
@@ -2343,9 +2356,10 @@ const Export = (() => {
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
   }
 
-  return { xlsx, csv, download, svgToPng, zip };
+  const pngBlob = (svg, scale) => new Promise(res => svgToPng(svg, scale, res));
+  return { xlsx, csv, download, svgToPng, pngBlob, zip };
 })();
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
 /* ═════════════════════════════════════════════════════════════════════
    7. THE APP — state, plate editor, views, events
    ═════════════════════════════════════════════════════════════════════ */
@@ -2625,6 +2639,7 @@ const App = (() => {
     if (!block()) { v.innerHTML = welcomeHtml(); bindWelcome(); return; }
     if (!st.R) { v.innerHTML = `<div class="card"><div class="status">Analysing…</div></div>`; return; }
     ({ plate: viewPlate, curves: viewCurves, panels: viewPanels, rate: viewRate, bars: viewBars, stats: viewStats, table: viewTable, raw: viewRaw, methods: viewMethods })[st.V.tab]();
+    const cs = $('chartSave'); if (cs) cs.onclick = openSaveDialog;
   }
 
   function welcomeHtml() {
@@ -2944,7 +2959,8 @@ const App = (() => {
   }
 
   /* ---------- chart helpers ---------- */
-  const chartGroups = () => st.groups.filter(g => (st.D.blanks || isSampleRole(g.role)) && st.R.groups[g.id] && st.R.groups[g.id].n);
+  // st.onlyIds limits charts to chosen groups while "Save charts…" draws them
+  const chartGroups = () => st.groups.filter(g => (st.D.blanks || isSampleRole(g.role)) && st.R.groups[g.id] && st.R.groups[g.id].n && (!st.onlyIds || st.onlyIds.has(g.id)));
   function paperHtml(svg, extra = '') { return `<div class="paper" id="paper">${svg}</div>${extra}`; }
   function bindLegend(after) {
     $('paper').addEventListener('click', e => {
@@ -2957,7 +2973,7 @@ const App = (() => {
     const vb = svg.viewBox.baseVal;
     return { x: (e.clientX - r.left) * vb.width / r.width, y: (e.clientY - r.top) * vb.height / r.height, svg };
   }
-  const timeToolbar = (extra) => `<div class="toolbar">${extra}<div class="grow"></div><span class="status">Drag on the chart to zoom into an area · double-click to see everything · click a legend entry to hide a group</span></div>`;
+  const timeToolbar = (extra) => `<div class="toolbar">${extra}<button class="btn small" id="chartSave" title="Save the chart for chosen groups, together or one file per group">Save charts…</button><div class="grow"></div><span class="status">Drag on the chart to zoom into an area · double-click to see everything · click a legend entry to hide a group</span></div>`;
 
   /* ---------- zoom (Curves and Growth rate) ---------- */
   function zoomBarHtml(key) {
@@ -3207,6 +3223,7 @@ const App = (() => {
         ${Models.list.filter(m => st.S.models[m.id]).map(m => `<option value="${m.id}">${m.name} fit</option>`).join('')}
         <option value="tangent">µmax tangent (model-free)</option><option value="none">Data only</option></select></label>
       <label class="fld"><span>Y axis</span><select id="pLog"><option value="0">Linear</option><option value="1">Log scale</option></select></label>
+      <button class="btn small" id="chartSave" title="Save chosen panels, as one figure or one file per group">Save panels…</button>
       <label class="fld"><span>Columns</span><select id="pCols"><option value="0">Auto</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
       <div class="grow"></div><span class="status">Points are readings, lines are fits. Click a point to exclude or include that well.</span></div>
       ${paperHtml(C.svg)}</div>`;
@@ -3238,7 +3255,7 @@ const App = (() => {
   }
 
   /* ---------- PARAMETERS (bars) ---------- */
-  function sampleGroupsWithData() { return st.groups.filter(g => isSampleRole(g.role) && st.R.groups[g.id] && st.R.groups[g.id].n); }
+  function sampleGroupsWithData() { return st.groups.filter(g => isSampleRole(g.role) && st.R.groups[g.id] && st.R.groups[g.id].n && (!st.onlyIds || st.onlyIds.has(g.id))); }
   function compare(metric, mode, refId) {
     const gs = sampleGroupsWithData().filter(g => !g.hidden);
     const vals = g => st.R.groups[g.id].metrics[metric].values.filter(Number.isFinite);
@@ -3261,41 +3278,68 @@ const App = (() => {
   }
 
   const refOptions = sel => `<option value="">(no comparison)</option>` + sampleGroupsWithData().map(g => `<option value="${g.id}"${g.id === sel ? ' selected' : ''}>${esc(g.name)}</option>`).join('');
+  /* how values are shown relative to the reference group */
+  const REL = { abs: { name: 'Absolute values' }, pct: { name: '% of reference', unit: '%', line: 100 },
+    ratio: { name: 'Ratio to reference (fold)', unit: 'fold', line: 1 }, diff: { name: 'Difference from reference', line: 0 } };
   function viewBars() {
     if (!METRIC[st.V.barMetric]) st.V.barMetric = 'mu';
     const D = st.D, V = st.V, cm = colorMap(), R = st.R, mk = V.barMetric, md = METRIC[mk];
-    const gs = sampleGroupsWithData().filter(g => !g.hidden);
-    let stars = {};
-    if (V.ref) { const c = compare(mk, 'ref', V.ref); for (const x of c.rows) stars[x.b.id] = M.stars(x.padj); }
+    let gs = sampleGroupsWithData().filter(g => !g.hidden);
+    const ref = V.ref ? gs.find(g => g.id === V.ref) || null : null;
+    if (ref) gs = [ref, ...gs.filter(g => g !== ref)];          // the reference is always drawn first
+    const rel = ref ? (V.barRel || 'abs') : 'abs';
+    const refMean = ref ? R.groups[ref.id].metrics[mk].mean : NaN;
+    const tf = v => rel === 'pct' ? v / refMean * 100 : rel === 'ratio' ? v / refMean : rel === 'diff' ? v - refMean : v;
+    // significance only when both groups have replicate wells
+    let stars = {}, testable = false;
+    if (ref) {
+      const c = compare(mk, 'ref', ref.id);
+      for (const x of c.rows) if (x.r) { stars[x.b.id] = M.stars(x.padj); testable = true; }
+    }
     let prevFam = null;
     const famMode = D.palette === 'family' || D.palette === 'family2';
     const items = gs.map(g => {
-      const s = R.groups[g.id].metrics[mk];
+      const raw = R.groups[g.id].metrics[mk].values;
+      const vals = raw.map(v => Number.isFinite(v) ? tf(v) : NaN);
+      const s = Analysis.summarize(vals);
       const fam = Colors.familyKey(g.name, D.palette === 'family2');
       const gap = famMode && prevFam !== null && fam !== prevFam; prevFam = fam;
       const err = D.err === 'none' ? NaN : D.err === 'sd' ? s.sd : D.err === 'sem' ? s.sem : s.ci;
-      return { id: g.id, label: g.name, color: cm[g.id], mean: s.mean, err, star: g.id === V.ref ? '' : stars[g.id] || '', gapBefore: gap,
-        values: R.groups[g.id].wells.map((w, i) => ({ v: s.values[i], well: w })) };
+      return { id: g.id, label: g.name, color: cm[g.id], mean: s.mean, err, isRef: g === ref, star: g === ref ? '' : stars[g.id] || '', gapBefore: gap,
+        values: R.groups[g.id].wells.map((w, i) => ({ v: vals[i], raw: raw[i], well: w })), n: s.n };
     });
-    const ylab = md.label + (md.unit ? ' (' + md.unit + ')' : '');
-    const note = V.ref ? `Welch t-test vs ${groupById(V.ref) ? groupById(V.ref).name : ''}, Holm-adjusted` + (D.err !== 'none' ? ' · bars: mean ' + Charts.ERR_LABEL[D.err] : '') : (D.err !== 'none' ? 'mean ' + Charts.ERR_LABEL[D.err] : '');
-    const C = Charts.bars({ items, W: D.w, H: D.h, type: V.barType, showPoints: V.barPoints, ylab, title: D.title, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg, ps: Math.max(2, D.ps), note, ymin: D.ymin, ymax: D.ymax });
+    const unit = rel === 'abs' ? md.unit : rel === 'diff' ? md.unit : REL[rel].unit;
+    const ylab = md.label + (rel === 'abs' ? '' : rel === 'pct' ? ` (% of ${ref.name})` : rel === 'ratio' ? ` (fold vs ${ref.name})` : ` (difference from ${ref.name}${md.unit ? ', ' + md.unit : ''})`)
+      + (rel === 'abs' && md.unit ? ' (' + md.unit + ')' : '');
+    const errNote = D.err !== 'none' && items.some(i => i.n > 1) ? 'bars: mean ' + Charts.ERR_LABEL[D.err] : '';
+    const note = ref ? (testable ? `Welch t-test vs ${ref.name}, Holm-adjusted` : `Reference: ${ref.name} · single wells, so no significance tests`) + (errNote ? ' · ' + errNote : '') : errNote;
+    const C = Charts.bars({ items, W: D.w, H: D.h, type: V.barType, showPoints: V.barPoints, ylab, title: D.title, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg,
+      ps: Math.max(2, D.ps), note, ymin: rel === 'abs' ? D.ymin : null, ymax: rel === 'abs' ? D.ymax : null, refLine: rel !== 'abs' ? REL[rel].line : (ref ? refMean : NaN) });
     const src = st.S.source === 'mf' ? 'model-free' : st.S.source === 'best' ? 'best model per well' : Models.byId[st.S.source].name + ' fit';
     $('view').innerHTML = `<div class="card"><div class="toolbar">
       <label class="fld"><span>Parameter</span><select id="bMetric">${metricOptions(mk)}</select></label>
       <label class="fld"><span>Chart</span><select id="bType"><option value="bar">Bars</option><option value="dot">Mean line + points</option></select></label>
-      <label class="fld"><span>Compare with</span><select id="bRef">${refOptions(V.ref)}</select></label>
+      <label class="fld"><span>Reference</span><select id="bRef">${refOptions(V.ref).replace('(no comparison)', '(none)')}</select></label>
+      <label class="fld"><span>Show values as</span><select id="bRel" ${ref ? '' : 'disabled title="Choose a reference first"'}>${Object.entries(REL).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('')}</select></label>
       <label class="chk"><input type="checkbox" id="bPts" ${V.barPoints ? 'checked' : ''}> Replicate points</label>
-      <div class="grow"></div><span class="status">${esc(md.help)} · µ/lag from ${src}</span></div>
+      <button class="btn small" id="chartSave" title="Save the chart for chosen groups">Save charts…</button>
+      <div class="grow"></div><span class="status">${esc(md.help)} · µ/lag from ${src}${ref ? ` · dashed line = ${rel === 'abs' ? 'reference value' : rel === 'pct' ? '100%' : rel === 'ratio' ? '1×' : 'no difference'}` : ''}</span></div>
       ${paperHtml(C.svg)}</div>`;
-    $('bType').value = V.barType;
+    $('bType').value = V.barType; $('bRel').value = rel;
     $('bMetric').onchange = e => { V.barMetric = e.target.value; render(); };
     $('bType').onchange = e => { V.barType = e.target.value; render(); };
-    $('bRef').onchange = e => { V.ref = e.target.value; render(); };
+    $('bRef').onchange = e => { V.ref = e.target.value; if (!V.ref) V.barRel = 'abs'; render(); };
+    $('bRel').onchange = e => { V.barRel = e.target.value; render(); };
     $('bPts').onchange = e => { V.barPoints = e.target.checked; render(); };
-    bindHits(C.hits, h => `<b>${h.well}</b> · ${esc(h.group)}<br>${esc(md.label)}: ${fmt(h.v, md.d)} ${esc(md.unit)}`);
-    st.lastSvg = C.svg; st.lastName = 'parameter_' + mk;
-    st.lastTable = groupRows();
+    bindHits(C.hits, h => {
+      const it = items.find(i => i.values.some(v => v.well === h.well)), v = it && it.values.find(x => x.well === h.well);
+      return `<b>${h.well}</b> · ${esc(h.group)}<br>${esc(md.label)}: ${fmt(v ? v.raw : h.v, md.d)} ${esc(md.unit)}` + (rel !== 'abs' ? `<br>${REL[rel].name}: ${fmt(h.v, rel === 'ratio' ? 3 : rel === 'pct' ? 1 : md.d)}${unit && rel !== 'diff' ? ' ' + unit : ''}` : '');
+    });
+    st.lastSvg = C.svg; st.lastName = 'parameter_' + mk.replace(/[^a-z0-9]+/gi, '_') + (rel !== 'abs' ? '_' + rel : '');
+    const head = ['Group', 'n', rel === 'abs' ? `${md.label} mean` : `${md.label} ${REL[rel].name} mean`, 'SD', 'SEM', ...(ref ? ['p (Holm)', ''] : [])];
+    const cmp = ref ? compare(mk, 'ref', ref.id).rows : [];
+    st.lastTable = [head, ...items.map(it => { const s = Analysis.summarize(it.values.map(v => v.v)); const c = cmp.find(x => x.b.id === it.id);
+      return [it.label + (it.isRef ? ' (reference)' : ''), s.n, s.mean, s.sd, s.sem, ...(ref ? [c ? c.padj : NaN, c ? M.stars(c.padj) : ''] : [])]; })];
   }
 
   /* ---------- STATISTICS ---------- */
@@ -3594,6 +3638,81 @@ const App = (() => {
     st.lastTable = null;
   }
 
+  /* ---------- SAVE CHARTS: chosen groups, one figure or one file per group ---------- */
+  const CHART_TABS = { curves: 'Curves', panels: 'Panels', rate: 'Growth rate', bars: 'Parameters' };
+  const safeName = t => String(t).replace(/[^a-z0-9._-]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'group';
+  function openSaveDialog() {
+    const tab = st.V.tab;
+    if (!CHART_TABS[tab] || !st.R) { flash('Open the Curves, Panels, Growth rate or Parameters tab first, then choose Save charts.'); return; }
+    const list = (tab === 'bars' ? sampleGroupsWithData() : chartGroups());
+    const bg = document.createElement('div'); bg.className = 'modal-bg';
+    bg.innerHTML = `<div class="modal" role="dialog" aria-label="Save charts">
+      <h3>Save charts from the ${CHART_TABS[tab]} tab</h3>
+      <p class="note">Pick the groups to include. The chart uses your current settings on this tab (view, axis, colours, size).</p>
+      <div class="toolbar" style="margin:8px 0">
+        <input type="text" id="svFilter" placeholder="Filter names…" style="padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel);min-width:180px">
+        <button class="btn small" id="svAll">Select all</button><button class="btn small" id="svNone">Select none</button>
+        <span class="status" id="svCount"></span>
+      </div>
+      <div id="svList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px 12px;max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px">
+        ${list.map(g => `<label class="chk" data-name="${esc(g.name.toLowerCase())}"><input type="checkbox" value="${g.id}" ${g.hidden ? '' : 'checked'}> ${esc(g.name)}</label>`).join('')}
+      </div>
+      <div class="row2" style="margin-top:12px">
+        <div class="fld"><span>Save as</span>
+          <label class="chk"><input type="radio" name="svMode" value="one" checked> One figure with all selected groups</label>
+          <label class="chk"><input type="radio" name="svMode" value="each" ${tab === 'bars' ? 'disabled' : ''}> A separate figure for each group (.zip)</label>
+        </div>
+        <div class="fld"><span>Format</span>
+          <label class="chk"><input type="radio" name="svFmt" value="svg" checked> SVG (vector, editable)</label>
+          <label class="chk"><input type="radio" name="svFmt" value="png"> PNG (300 dpi)</label>
+        </div>
+      </div>
+      <div class="foot"><button class="btn" id="svCancel">Cancel</button><button class="btn primary" id="svOk">Save</button></div></div>`;
+    document.body.appendChild(bg);
+    const boxes = () => [...bg.querySelectorAll('#svList input')];
+    const count = () => { const n = boxes().filter(b => b.checked).length; $('svCount').textContent = `${n} of ${list.length} selected`; $('svOk').disabled = !n; };
+    count();
+    bg.querySelector('#svList').addEventListener('change', count);
+    $('svAll').onclick = () => { boxes().forEach(b => { if (!b.closest('label').hidden) b.checked = true; }); count(); };
+    $('svNone').onclick = () => { boxes().forEach(b => { if (!b.closest('label').hidden) b.checked = false; }); count(); };
+    $('svFilter').oninput = e => { const q = e.target.value.toLowerCase(); bg.querySelectorAll('#svList label').forEach(l => { l.hidden = q && !l.dataset.name.includes(q); }); };
+    const close = () => bg.remove();
+    $('svCancel').onclick = close; bg.addEventListener('click', e => { if (e.target === bg) close(); });
+    $('svOk').onclick = async () => {
+      const ids = boxes().filter(b => b.checked).map(b => b.value);
+      const mode = bg.querySelector('input[name=svMode]:checked').value, f = bg.querySelector('input[name=svFmt]:checked').value;
+      $('svOk').disabled = true; $('svOk').textContent = 'Saving…';
+      await exportCharts(tab, ids, mode, f);
+      close();
+    };
+  }
+  async function exportCharts(tab, ids, mode, f) {
+    // draw each requested chart with only the chosen groups, then put the app back as it was
+    const keep = { cols: st.V.panelCols, w: st.D.w }, out = [];
+    hist.lock = true;
+    try {
+      const draw = set => { st.onlyIds = set; render(); const svg = typeof st.lastSvg === 'function' ? st.lastSvg() : st.lastSvg; return { svg, name: st.lastName }; };
+      if (mode === 'one') out.push(draw(new Set(ids)));
+      else {
+        if (tab === 'panels') { st.V.panelCols = 1; st.D.w = 460; }
+        for (const id of ids) { const r = draw(new Set([id])); out.push({ svg: r.svg, name: r.name + '_' + safeName((groupById(id) || {}).name) }); }
+      }
+    } finally {
+      st.onlyIds = null; st.V.panelCols = keep.cols; st.D.w = keep.w; render(); hist.lock = false;
+    }
+    const base = baseName();
+    const files = [];
+    for (const o of out) {
+      if (!o.svg) continue;
+      if (f === 'svg') files.push({ name: o.name + '.svg', data: o.svg });
+      else { const b = await Export.pngBlob(o.svg, 300 / 96); if (b) files.push({ name: o.name + '.png', data: new Uint8Array(await b.arrayBuffer()) }); }
+    }
+    if (!files.length) { flash('Nothing to save.'); return; }
+    if (files.length === 1) Export.download(new Blob([files[0].data], { type: f === 'svg' ? 'image/svg+xml' : 'image/png' }), base + '_' + files[0].name);
+    else Export.download(Export.zip(files.map(x => ({ name: x.name, data: x.data })), 'application/zip'), `${base}_${safeName(CHART_TABS[tab])}_${files.length}_charts.zip`);
+    flash(`Saved ${files.length} chart${files.length > 1 ? 's' : ''}.`);
+  }
+
   /* ════════════════ EXPORT / PROJECT ════════════════ */
   const baseName = () => (st.fileName || 'sigmoid').replace(/\.[^.]+$/, '');
   function exportAction(kind) {
@@ -3602,6 +3721,7 @@ const App = (() => {
     const name = baseName();
     if (kind === 'csv-wells') Export.download(new Blob(['\uFEFF' + Export.csv(wellRows(true))], { type: 'text/csv' }), name + '_wells.csv');
     else if (kind === 'csv-groups') Export.download(new Blob(['\uFEFF' + Export.csv(groupRows())], { type: 'text/csv' }), name + '_groups.csv');
+    else if (kind === 'multi') openSaveDialog();
     else if (kind === 'csv-fl') {
       if (!dual()) { flash('No fluorescence read is being analysed. Pick one under Data → Fluorescence read.'); return; }
       const a = rawRows('fcorr'), q = rawRows('fod');
@@ -3731,6 +3851,10 @@ const App = (() => {
   function init() {
     try { const th = localStorage.getItem('gs-theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) { }
     writeInputs(); bindSettings();
+    // keep the tab bar just under the top bar while scrolling (the top bar can wrap to two lines)
+    const tb = document.querySelector('.topbar');
+    const setTb = () => document.documentElement.style.setProperty('--tb', tb.offsetHeight + 'px');
+    setTb(); try { new ResizeObserver(setTb).observe(tb); } catch (e) { addEventListener('resize', setTb); }
     $('btnOpen').onclick = () => $('fileInput').click();
     $('fileInput').onchange = e => { const f = e.target.files[0]; if (f) loadFile(f); e.target.value = ''; };
     const rd = $('railDrop'); bindDrop(rd); rd.onclick = () => $('fileInput').click();
