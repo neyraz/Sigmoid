@@ -147,6 +147,10 @@ details.sec > summary .tag { margin-left: auto; font: 11px var(--f-mono); color:
 .toolbar .grow { flex: 1; }
 .paper { background: var(--paper); color: var(--paper-fg); border-radius: 6px; border: 1px solid var(--line); position: relative; overflow: hidden; }
 .paper > svg { display: block; width: 100%; height: auto; }
+/* hovering a line: dim the others, bring this one forward */
+.paper svg.hl [data-sid] { opacity: .14; transition: opacity .08s; }
+.paper svg.hl [data-sid].on { opacity: 1; }
+.paper svg.hl path.ln.on { stroke-width: 3.5px; }
 .status { font: 12px var(--f-mono); color: var(--muted); }
 .progress { height: 3px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
 .progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
@@ -235,7 +239,7 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
 <header class="topbar">
   <button class="brand" id="brandHome" title="Start over: clears the loaded data and resets everything (Undo brings it back)">
     <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10" fill="#5a3fa6"/><path d="M7 31.5H33" stroke="#fff" stroke-opacity=".35" stroke-width="1.4" stroke-linecap="round"/><path d="M7 29.5C14 29.5 15.5 28.5 18 22.5S22.5 10.5 33 10.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="9" cy="29.3" r="2.1" fill="#f48fb1"/><circle cx="16.6" cy="25.6" r="2.1" fill="#f48fb1"/><circle cx="20" cy="17.2" r="2.1" fill="#f48fb1"/><circle cx="25.5" cy="12" r="2.1" fill="#f48fb1"/><circle cx="31.5" cy="10.6" r="2.1" fill="#f48fb1"/></svg>
-    <span class="names"><h1>Sigmoid <span class="ver">v1.4</span></h1><span class="tagline">Bacterial Growth Analysis</span></span>
+    <span class="names"><h1>Sigmoid <span class="ver">v1.5</span></h1><span class="tagline">Bacterial Growth Analysis</span></span>
   </button>
   <div class="filechip" id="fileChip">no data loaded</div>
   <div class="spacer"></div>
@@ -2065,9 +2069,9 @@ const Charts = (() => {
     if (o.zeroLine && yDomZ[0] < 0 && yDomZ[1] > 0) plot += `<line x1="${F.m.l}" x2="${F.m.l + F.pw}" y1="${Y(0)}" y2="${Y(0)}" stroke="#999" stroke-dasharray="3 3"/>`;
     for (const s of vis) {
       if (o.showWells) for (const w of s.wells)
-        plot += `<path d="${pathOf(s.t, w.y, X, Y)}" fill="none" stroke="${s.color}" stroke-opacity=".35" stroke-width="${Math.max(0.6, o.lw * 0.5)}"/>`;
+        plot += `<path data-sid="${esc(s.id)}" d="${pathOf(s.t, w.y, X, Y)}" fill="none" stroke="${s.color}" stroke-opacity=".35" stroke-width="${Math.max(0.6, o.lw * 0.5)}"/>`;
       if (o.errStyle === 'band' && o.errKind !== 'none')
-        plot += `<path d="${bandOf(s.t, s.y.map((v, i) => v - s.err[i]), s.y.map((v, i) => v + s.err[i]), X, Y)}" fill="${s.color}" fill-opacity=".18" stroke="none"/>`;
+        plot += `<path data-sid="${esc(s.id)}" d="${bandOf(s.t, s.y.map((v, i) => v - s.err[i]), s.y.map((v, i) => v + s.err[i]), X, Y)}" fill="${s.color}" fill-opacity=".18" stroke="none"/>`;
     }
     for (const s of vis) {
       if (o.errStyle === 'bars' && o.errKind !== 'none') {
@@ -2075,14 +2079,14 @@ const Charts = (() => {
         s.t.forEach((t, i) => {
           if (!Number.isFinite(s.y[i]) || !Number.isFinite(s.err[i]) || s.err[i] === 0) return;
           const xx = X(t), a = Y(s.y[i] - s.err[i]), b = Y(s.y[i] + s.err[i]);
-          plot += `<path d="M${xx},${a}V${b}M${xx - cap},${a}H${xx + cap}M${xx - cap},${b}H${xx + cap}" stroke="${s.color}" stroke-width="1" fill="none"/>`;
+          plot += `<path data-sid="${esc(s.id)}" d="M${xx},${a}V${b}M${xx - cap},${a}H${xx + cap}M${xx - cap},${b}H${xx + cap}" stroke="${s.color}" stroke-width="1" fill="none"/>`;
         });
       }
-      plot += `<path d="${pathOf(s.t, s.y, X, Y)}" fill="none" stroke="${s.color}" stroke-width="${o.lw}" stroke-linejoin="round"/>`;
+      plot += `<path class="ln" data-sid="${esc(s.id)}" d="${pathOf(s.t, s.y, X, Y)}" fill="none" stroke="${s.color}" stroke-width="${o.lw}" stroke-linejoin="round"/>`;
       if (o.points && o.ps > 0) {
         let pts = '';
         s.t.forEach((t, i) => { if (Number.isFinite(s.y[i])) pts += `<circle cx="${X(t).toFixed(1)}" cy="${Y(s.y[i]).toFixed(1)}" r="${o.ps}"/>`; });
-        plot += `<g fill="#fff" stroke="${s.color}" stroke-width="1.1">${pts}</g>`;
+        plot += `<g data-sid="${esc(s.id)}" fill="#fff" stroke="${s.color}" stroke-width="1.1">${pts}</g>`;
       }
     }
     let Y2 = null;
@@ -2091,12 +2095,12 @@ const Charts = (() => {
       body += ra.s; Y2 = ra.y2;
       for (const s of vis2) {
         if (o.errStyle === 'band' && o.errKind !== 'none')
-          plot += `<path d="${bandOf(s.t, s.y.map((v, i) => v - s.err[i]), s.y.map((v, i) => v + s.err[i]), X, Y2)}" fill="${s.color}" fill-opacity=".10" stroke="none"/>`;
-        plot += `<path d="${pathOf(s.t, s.y, X, Y2)}" fill="none" stroke="${s.color}" stroke-width="${o.lw}" stroke-dasharray="6 4" stroke-linejoin="round"/>`;
+          plot += `<path data-sid="${esc(s.id)}" d="${bandOf(s.t, s.y.map((v, i) => v - s.err[i]), s.y.map((v, i) => v + s.err[i]), X, Y2)}" fill="${s.color}" fill-opacity=".10" stroke="none"/>`;
+        plot += `<path class="ln" data-sid="${esc(s.id)}" d="${pathOf(s.t, s.y, X, Y2)}" fill="none" stroke="${s.color}" stroke-width="${o.lw}" stroke-dasharray="6 4" stroke-linejoin="round"/>`;
         if (o.points && o.ps > 0) {
           let pts = '';
           s.t.forEach((t, i) => { if (Number.isFinite(s.y[i])) pts += `<rect x="${(X(t) - o.ps * 0.8).toFixed(1)}" y="${(Y2(s.y[i]) - o.ps * 0.8).toFixed(1)}" width="${o.ps * 1.6}" height="${o.ps * 1.6}"/>`; });
-          plot += `<g fill="${s.color}" fill-opacity=".8">${pts}</g>`;
+          plot += `<g data-sid="${esc(s.id)}" fill="${s.color}" fill-opacity=".8">${pts}</g>`;
         }
       }
     }
@@ -2359,7 +2363,7 @@ const Export = (() => {
   const pngBlob = (svg, scale) => new Promise(res => svgToPng(svg, scale, res));
   return { xlsx, csv, download, svgToPng, pngBlob, zip };
 })();
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.5';
 /* ═════════════════════════════════════════════════════════════════════
    7. THE APP — state, plate editor, views, events
    ═════════════════════════════════════════════════════════════════════ */
@@ -2640,6 +2644,7 @@ const App = (() => {
     if (!st.R) { v.innerHTML = `<div class="card"><div class="status">Analysing…</div></div>`; return; }
     ({ plate: viewPlate, curves: viewCurves, panels: viewPanels, rate: viewRate, bars: viewBars, stats: viewStats, table: viewTable, raw: viewRaw, methods: viewMethods })[st.V.tab]();
     const cs = $('chartSave'); if (cs) cs.onclick = openSaveDialog;
+    const sa = $('showAll'); if (sa) sa.onclick = () => { st.groups.forEach(g => { g.hidden = false; }); render(); };
   }
 
   function welcomeHtml() {
@@ -2973,7 +2978,75 @@ const App = (() => {
     const vb = svg.viewBox.baseVal;
     return { x: (e.clientX - r.left) * vb.width / r.width, y: (e.clientY - r.top) * vb.height / r.height, svg };
   }
-  const timeToolbar = (extra) => `<div class="toolbar">${extra}<button class="btn small" id="chartSave" title="Save the chart for chosen groups, together or one file per group">Save charts…</button><div class="grow"></div><span class="status">Drag on the chart to zoom into an area · double-click to see everything · click a legend entry to hide a group</span></div>`;
+  const timeToolbar = (extra) => {
+    const nHid = st.R ? st.groups.filter(g => g.hidden && (st.D.blanks || isSampleRole(g.role))).length : 0;
+    return `<div class="toolbar">${extra}<button class="btn small" id="chartSave" title="Save the chart for chosen groups, together or one file per group">Save charts…</button>`
+      + (nHid ? `<button class="btn small" id="showAll" title="Bring back every hidden group">Show all (${nHid} hidden)</button>` : '')
+      + `<div class="grow"></div><span class="status">Point at a line to see its name · click a line to hide it · click a legend entry to show or hide · drag to zoom, double-click for the full view</span></div>`;
+  };
+
+  /* ---------- point at a line to name it, click to hide it ---------- */
+  // pixel polylines for every drawn series (and individual wells when shown), in the outer SVG's coordinates
+  function lineSet(part, { yoff = 0, y2 = false, d = 3, unit = '', xKind = 'time' } = {}) {
+    const X = part.F.x, Y = y2 ? part.Y2 : part.F.y, out = [];
+    const mk = (sid, label, xs, ys) => ({ sid, label, d, unit, xKind, xs, ys, pts: xs.map((x, i) => Number.isFinite(x) && Number.isFinite(ys[i]) ? [X(x), Y(ys[i]) + yoff] : null) });
+    for (const s of (y2 ? part.vis2 : part.vis) || []) {
+      out.push(mk(s.id, s.label, s.t, s.y));
+      if (st.D.wells && xKind === 'time') for (const w of s.wells || []) if (w.y && w.y.length) out.push(mk(s.id, `${w.id} · ${s.label}`, s.t, w.y));
+    }
+    return out;
+  }
+  function segDist(px, py, a, b) {
+    const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy;
+    let t = L ? ((px - a[0]) * dx + (py - a[1]) * dy) / L : 0; t = Math.max(0, Math.min(1, t));
+    const x = a[0] + t * dx, y = a[1] + t * dy; return [Math.hypot(px - x, py - y), t];
+  }
+  function bindLineHover(lines) {
+    const paper = $('paper'), svg = paper.querySelector('svg');
+    if (!svg || !lines.length) return;
+    let cur = null;
+    const nearest = p => {
+      let best = null, bd = 9;
+      for (const ln of lines) {
+        const P = ln.pts;
+        for (let i = 1; i < P.length; i++) {
+          if (!P[i - 1] || !P[i]) continue;
+          const [dd, t] = segDist(p.x, p.y, P[i - 1], P[i]);
+          if (dd < bd) { bd = dd; best = { ln, i: t < 0.5 ? i - 1 : i }; }
+        }
+      }
+      return best;
+    };
+    const highlight = sid => {
+      if (cur === sid) return;
+      cur = sid;
+      svg.classList.toggle('hl', !!sid);
+      svg.querySelectorAll('[data-sid]').forEach(el => {
+        const on = el.getAttribute('data-sid') === sid;
+        el.classList.toggle('on', on);
+        if (on) el.parentNode.appendChild(el); // draw it on top of the others
+      });
+    };
+    paper.addEventListener('mousemove', e => {
+      if (paper.dataset.dragging) return;
+      const lg = e.target.closest && e.target.closest('[data-leg]');
+      if (lg) { highlight(lg.getAttribute('data-leg')); paper.dataset.onLine = '1'; paper.style.cursor = 'pointer'; hideTip(); return; }
+      const p = svgPoint(e), h = nearest(p);
+      if (!h) { highlight(null); delete paper.dataset.onLine; paper.style.cursor = 'crosshair'; return; }
+      paper.dataset.onLine = '1'; paper.style.cursor = 'pointer';
+      highlight(h.ln.sid);
+      const L = h.ln, i = h.i, g = groupById(L.sid);
+      const where = L.xKind === 'od' ? `OD ${fmt(L.xs[i], 3)} · F ${fmt(L.ys[i], 0)} · F/OD ${fmt(L.ys[i] / L.xs[i], 0)}` : `${fmt(L.xs[i], 2)} h · ${fmt(L.ys[i], L.d)}${L.unit ? ' ' + L.unit : ''}`;
+      showTip(`<span class="dot" style="background:${colorMap()[L.sid] || '#999'}"></span><b style="font-size:13px">${esc(L.label)}</b><br>${where}<br><i>click to hide${g ? '' : ''}</i>`, e);
+    });
+    paper.addEventListener('mouseleave', () => { highlight(null); delete paper.dataset.onLine; });
+    paper.addEventListener('click', e => {
+      if (!cur || Date.now() - (st.lastDrag || 0) < 300 || e.target.closest('[data-leg]')) return;
+      const g = groupById(cur); if (!g) return;
+      g.hidden = true; hideTip(); render();
+      flash(`${g.name} hidden. Click it in the legend, or "Show all", to bring it back.`);
+    });
+  }
 
   /* ---------- zoom (Curves and Growth rate) ---------- */
   function zoomBarHtml(key) {
@@ -3030,6 +3103,7 @@ const App = (() => {
       const w = +rect.getAttribute('width') || 0, h = +rect.getAttribute('height') || 0;
       const rx = +rect.getAttribute('x'), ry = +rect.getAttribute('y');
       start = null; delete paper.dataset.dragging; rect.remove();
+      if (w >= 8 || h >= 8) st.lastDrag = Date.now();
       if (w < 8 && h < 8) return;
       const xd = C.xDom, yd = C.yDom;
       const fx = v => fromFrac((v - F.m.l) / F.pw, xd[0], xd[1], false);
@@ -3105,7 +3179,7 @@ const App = (() => {
       top = mk(a, hTop, odLab + errTxt, '', lm, D.title); bot = mk(b, hBot, flLab + errTxt, D.xlab, lm, '');
       svg = Charts.stack([top, bot], D.w);
       const span = { m: { l: top.F.m.l, t: top.F.m.t }, pw: top.F.pw, ph: hTop + bot.F.m.t + bot.F.ph - top.F.m.t, x: top.F.x };
-      C = { F: span, xDom: top.xDom, yDom: top.yDom, xAuto: top.xAuto, yAuto: top.yAuto, ylog: top.ylog, vis: top.vis, xOnly: true,
+      C = { F: span, parts: [top, bot], xDom: top.xDom, yDom: top.yDom, xAuto: top.xAuto, yAuto: top.yAuto, ylog: top.ylog, vis: top.vis, xOnly: true,
         tipRows: j => top.vis.map(s => [s, s.y[j], bot.vis.find(x => x.id === s.id)]).filter(r => Number.isFinite(r[1]))
           .map(([s, v, f]) => `<span class="dot" style="background:${s.color}"></span>${esc(s.label)}: OD ${fmt(v, 3)} · F ${fmt(f ? f.y[j] : NaN, 0)}`) };
       table = curveRows([...a.map(x => Object.assign({}, x, { label: x.label + ' OD' })), ...b.map(x => Object.assign({}, x, { label: x.label + ' F' }))]);
@@ -3133,8 +3207,13 @@ const App = (() => {
     if ($('cData')) { $('cData').value = V.curveData; $('cData').onchange = e => { V.curveData = e.target.value; V.zoom[zkey] = null; render(); }; }
     if ($('cLog')) { $('cLog').value = V.ylog ? '1' : '0'; $('cLog').onchange = e => { V.ylog = e.target.value === '1'; V.zoom[zkey] = null; render(); }; }
     bindLegend();
-    if (view === 'fvod') bindHits(C.hits, h => `<b>${esc(h.group)}</b><br>${fmt(h.tt, 2)} h · OD ${fmt(h.od, 3)} · F ${fmt(h.f, 0)}<br>F/OD ${fmt(h.f / h.od, 0)}`);
-    else bindCrosshair(C, 'OD');
+    let lines;
+    if (view === 'stack') lines = [...lineSet(C.parts[0], { d: 3 }), ...lineSet(C.parts[1], { yoff: C.parts[0].H, d: 0, unit: 'RFU' })];
+    else if (view === 'dual') lines = [...lineSet(C, { d: 3 }), ...lineSet(C, { y2: true, d: 0, unit: 'RFU' })];
+    else if (view === 'fvod') lines = lineSet(C, { xKind: 'od' });
+    else lines = lineSet(C, { d: view === 'od' ? 3 : 0, unit: view === 'od' ? '' : view === 'fl' ? 'RFU' : 'RFU/OD' });
+    bindLineHover(lines);
+    if (view !== 'fvod') bindCrosshair(C, 'OD');
     bindZoom(C, zkey);
     st.lastSvg = svg; st.lastName = { od: 'growth_curves', fl: 'fluorescence', dual: 'od_and_fluorescence', stack: 'od_fluorescence_stacked', fod: 'F_per_OD', fvod: 'F_vs_OD' }[view];
     st.lastTable = table;
@@ -3143,6 +3222,7 @@ const App = (() => {
     const paper = $('paper');
     paper.addEventListener('mousemove', e => {
       if (paper.dataset.dragging) return;
+      if (paper.dataset.onLine) { paper.querySelectorAll('.xhair').forEach(l => l.setAttribute('visibility', 'hidden')); return; }
       const p = svgPoint(e), F = C.F;
       const lines = p.svg.querySelectorAll('.xhair');
       const setL = (a, v) => lines.forEach(l => l.setAttribute(a, v));
@@ -3173,7 +3253,7 @@ const App = (() => {
     const thr = rd === 'fl' ? `lowest usable F (${fmt(st.R.fl.fMin, 0)})` : `lowest usable OD (${st.S.odMin})`;
     $('view').innerHTML = `<div class="card">${timeToolbar(`${dual() ? `<label class="fld"><span>Read</span><select id="rRead"><option value="od">OD</option><option value="fl">Fluorescence</option></select></label>` : ''}<p class="note" style="margin:0;max-width:62ch">Slope of ${what} in a sliding window of ${st.R && Object.values(st.R.wells).find(w => w.mf) ? Object.values(st.R.wells).find(w => w.mf).mf.window : '–'} readings (set by "µmax window"). Readings below the ${thr} are skipped. The peak of each trace is ${rd === 'fl' ? 'F µmax' : 'µmax'}.</p>${zoomBarHtml(key)}`)}${paperHtml(C.svg)}</div>`;
     if ($('rRead')) { $('rRead').value = rd; $('rRead').onchange = e => { V.rateRead = e.target.value; render(); }; }
-    bindLegend(); bindCrosshair(C, 'h⁻¹'); bindZoom(C, key);
+    bindLegend(); bindLineHover(lineSet(C, { d: 3, unit: 'h⁻¹' })); bindCrosshair(C, 'h⁻¹'); bindZoom(C, key);
     st.lastSvg = C.svg; st.lastName = 'growth_rate'; st.lastTable = curveRows(series);
   }
 
