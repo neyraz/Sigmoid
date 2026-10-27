@@ -239,7 +239,7 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
 <header class="topbar">
   <button class="brand" id="brandHome" title="Start over: clears the loaded data and resets everything (Undo brings it back)">
     <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10" fill="#5a3fa6"/><path d="M7 31.5H33" stroke="#fff" stroke-opacity=".35" stroke-width="1.4" stroke-linecap="round"/><path d="M7 29.5C14 29.5 15.5 28.5 18 22.5S22.5 10.5 33 10.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="9" cy="29.3" r="2.1" fill="#f48fb1"/><circle cx="16.6" cy="25.6" r="2.1" fill="#f48fb1"/><circle cx="20" cy="17.2" r="2.1" fill="#f48fb1"/><circle cx="25.5" cy="12" r="2.1" fill="#f48fb1"/><circle cx="31.5" cy="10.6" r="2.1" fill="#f48fb1"/></svg>
-    <span class="names"><h1>Sigmoid <span class="ver">v1.5</span></h1><span class="tagline">Bacterial Growth Analysis</span></span>
+    <span class="names"><h1>Sigmoid <span class="ver">v1.6</span></h1><span class="tagline">Bacterial Growth Analysis</span></span>
   </button>
   <div class="filechip" id="fileChip">no data loaded</div>
   <div class="spacer"></div>
@@ -434,6 +434,7 @@ const IO = (() => {
 
   /* ---------- ZIP ---------- */
   async function inflateRaw(u8) {
+    if (typeof DecompressionStream === 'undefined') throw new Error('This browser is too old to open .xlsx files. Use a current Chrome, Edge or Firefox, or save the sheet as CSV and load that.');
     const ds = new DecompressionStream('deflate-raw');
     const stream = new Blob([u8]).stream().pipeThrough(ds);
     return new Uint8Array(await new Response(stream).arrayBuffer());
@@ -490,6 +491,8 @@ const IO = (() => {
     const m = new RegExp('\\s' + name + '="([^"]*)"').exec(tag);
     return m ? unxml(m[1]) : null;
   }
+  // some programs write <x:row>, <x:c> … instead of <row>, <c>: drop the prefix
+  const noPrefix = s => s.replace(/<(\/?)[A-Za-z_][\w.-]*:(?=[A-Za-z_])/g, '<$1');
 
   // Does an Excel number format describe a date or time?
   function isDateFormat(code) {
@@ -509,9 +512,10 @@ const IO = (() => {
 
   async function readXlsx(buf) {
     const zip = readZip(buf);
-    const wbXml = await zip.get('xl/workbook.xml');
+    const get = async name => { const s = await zip.get(name); return s == null ? null : noPrefix(s); };
+    const wbXml = await get('xl/workbook.xml');
     if (!wbXml) throw new Error('This zip file does not look like an Excel workbook.');
-    const relsXml = (await zip.get('xl/_rels/workbook.xml.rels')) || '';
+    const relsXml = (await get('xl/_rels/workbook.xml.rels')) || '';
     const rels = {};
     for (const m of relsXml.matchAll(/<Relationship\b[^>]*>/g)) {
       const id = attr(m[0], 'Id'); let tgt = attr(m[0], 'Target');
@@ -520,7 +524,7 @@ const IO = (() => {
       rels[id] = tgt.replace(/\/\.\//g, '/');
     }
     // shared strings
-    const ssXml = (await zip.get('xl/sharedStrings.xml')) || '';
+    const ssXml = (await get('xl/sharedStrings.xml')) || '';
     const shared = [];
     for (const m of ssXml.matchAll(/<si>([\s\S]*?)<\/si>/g)) {
       const body = m[1].replace(/<rPh\b[\s\S]*?<\/rPh>/g, '');
@@ -529,7 +533,7 @@ const IO = (() => {
       shared.push(unxml(t));
     }
     // styles → which style indexes are date/time formatted
-    const stXml = (await zip.get('xl/styles.xml')) || '';
+    const stXml = (await get('xl/styles.xml')) || '';
     const fmtCodes = {};
     for (const m of stXml.matchAll(/<numFmt\b[^>]*>/g)) fmtCodes[+attr(m[0], 'numFmtId')] = attr(m[0], 'formatCode');
     const dateStyle = [];
@@ -543,7 +547,7 @@ const IO = (() => {
       const name = attr(m[0], 'name');
       const rid = attr(m[0], 'r:id') || attr(m[0], 'id');
       const path = rels[rid];
-      const xml = path ? await zip.get(path) : null;
+      const xml = path ? await get(path) : null;
       if (!xml) continue;
       sheets.push({ name, rows: parseSheetXml(xml, shared, dateStyle) });
     }
@@ -584,6 +588,11 @@ const IO = (() => {
           else if (t === 'str') val = raw;
           else if (t === 'b') val = raw === '1';
           else if (t === 'e') val = null;
+          else if (t === 'd') { // ISO 8601 date-time cell → days since 1899-12-30, like a formatted number
+            const iso = raw.length <= 10 ? raw + 'T00:00:00Z' : /[zZ]$|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw + 'Z';
+            const ms = Date.parse(iso);
+            val = Number.isFinite(ms) ? { days: ms / 86400000 + 25569 } : raw;
+          }
           else {
             const num = parseFloat(raw);
             val = dateStyle[s] ? { days: num } : num;
@@ -626,19 +635,35 @@ const IO = (() => {
 
   function readDelimited(text, name) {
     const lines = text.split(/\r\n|\n|\r/);
-    const sample = lines.slice(0, 60);
-    let best = ',', bestScore = -1;
-    for (const d of ['\t', ';', ',']) {
-      const counts = sample.map(l => splitLine(l, d).length - 1).filter(c => c > 0);
-      const score = counts.length ? counts.reduce((a, b) => a + b, 0) : 0;
-      if (score > bestScore) { bestScore = score; best = d; }
+    const sample = lines.filter(l => l.trim() !== '').slice(0, 200);
+    // Separator: a tab or ';' that appears on most lines wins (European files use ';' with
+    // decimal commas, so counting commas would mislead). Otherwise the character that
+    // splits the most lines into the same number of fields.
+    const share = ch => sample.length ? sample.filter(l => l.includes(ch)).length / sample.length : 0;
+    let best = share('\t') >= 0.5 ? '\t' : share(';') >= 0.5 ? ';' : share(',') >= 0.5 ? ',' : null;
+    if (!best) {
+      let bestScore = 0; best = ',';
+      for (const d of ['\t', ';', ',']) {
+        const counts = {};
+        for (const l of sample) { const n = splitLine(l, d).length; if (n > 1) counts[n] = (counts[n] || 0) + 1; }
+        const score = Math.max(0, ...Object.values(counts));
+        if (score > bestScore) { bestScore = score; best = d; }
+      }
     }
-    const decimalComma = best !== ',' && /\d,\d/.test(sample.join('\n')) && !/\d\.\d/.test(sample.join('\n'));
+    // decimal commas: more cells look like 0,123 than like 0.123
+    let nComma = 0, nDot = 0;
+    if (best !== ',') for (const l of sample) for (const c of splitLine(l, best)) {
+      const s = c.trim();
+      if (/^[-+]?(\d+|\d{1,3}(\.\d{3})+),\d+$/.test(s)) nComma++; else if (/^[-+]?\d*\.\d+([eE][-+]?\d+)?$/.test(s)) nDot++;
+    }
+    const decimalComma = nComma > nDot;
     const rows = lines.map(l => splitLine(l, best).map(cell => {
-      const s = cell.trim();
+      let s = cell.trim();
       if (s === '') return null;
-      const n = toNumber(decimalComma ? s.replace(',', '.') : s);
-      return Number.isFinite(n) ? n : s;
+      if (decimalComma) { if (/^[-+]?\d{1,3}(\.\d{3})+,\d+$/.test(s)) s = s.replace(/\./g, ''); s = s.replace(',', '.'); }
+      else if (/^[-+]?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, ''); // 12,345.6
+      const n = toNumber(s);
+      return Number.isFinite(n) ? n : cell.trim();
     }));
     return [{ name: name || 'Sheet1', rows }];
   }
@@ -658,7 +683,10 @@ const IO = (() => {
     if (isOle) throw new Error('Old .xls format can\'t be read without extra software. In Excel, use "Save As → Excel Workbook (.xlsx)" or CSV, then load again.');
     if (isZip) return readXlsx(buf);
     const text = decodeText(buf);
-    if (/^\s*\{/.test(text)) return { project: JSON.parse(text) };
+    if (/^\s*\{/.test(text)) {
+      try { return { project: JSON.parse(text) }; }
+      catch (e) { throw new Error('This .json file could not be read. It may be incomplete or damaged; Sigmoid project files end in .sigmoid.json.'); }
+    }
     return readDelimited(text, file.name.replace(/\.[^.]+$/, ''));
   }
 
@@ -702,6 +730,9 @@ const Blocks = (() => {
       if (m) return (+(m[1] || 0)) * 24 + (+m[2]) + (+m[3]) / 60 + (m[4] ? parseFloat(m[4].replace(',', '.')) / 3600 : 0);
       const n = IO.toNumber(s.replace(',', '.'));
       if (Number.isFinite(n)) return cellToHours(n, unit);
+      // a number with its unit written after it: "0.5 h", "30 min", "90 s"
+      const u = /^([-+]?\d*[.,]?\d+)\s*(h|hrs?|hours?|min|mins|minutes?|s|secs?|seconds?)\.?$/i.exec(s);
+      if (u) return parseFloat(u[1].replace(',', '.')) * (/^h/i.test(u[2]) ? 1 : /^m/i.test(u[2]) ? 1 / 60 : 1 / 3600);
     }
     return NaN;
   }
@@ -726,22 +757,36 @@ const Blocks = (() => {
     return 'h';
   }
 
+  // rows that describe the run (cycle counter, dates, instrument) are not the name of a read
+  const META_LABEL = /^\s*(cycles?|kinetic|application|device|instrument|date|time|start|end|user|system|method|firmware|serial|temp|temperature|ger[äa]t|datum|uhrzeit|zeit|messung)\b/i;
   function labelAbove(rows, r, c0) {
     for (let k = r - 1; k >= Math.max(0, r - 4); k--) {
       const row = rows[k] || [];
       for (let c = 0; c <= Math.max(c0 + 1, 2); c++) {
         const v = row[c];
-        if (v != null && v !== '' && typeof v !== 'object') return String(v).trim();
+        if (v != null && v !== '' && typeof v !== 'object') {
+          if (META_LABEL.test(String(v))) break;
+          return String(v).trim();
+        }
       }
     }
     return null;
   }
 
   function finish(block) {
-    // relative time if absolute date-times were given
     const t = block.times;
-    if (t.length && t[0] > 24 * 3000) { const t0 = t[0]; for (let i = 0; i < t.length; i++) t[i] -= t0; }
-    // sort by time (some exports are not sorted)
+    // relative time if absolute date-times were given
+    const fin = t.filter(Number.isFinite), t0 = fin.length ? Math.min(...fin) : 0;
+    if (t0 > 24 * 3000) for (let i = 0; i < t.length; i++) t[i] -= t0;
+    // some exports list the readings out of order: sort them by time
+    if (t.some((v, i) => i > 0 && v < t[i - 1])) {
+      const key = i => Number.isFinite(t[i]) ? t[i] : Infinity;
+      const ord = t.map((_, i) => i).sort((a, b) => key(a) - key(b) || a - b);
+      block.times = ord.map(i => t[i]);
+      block.temps = ord.map(i => block.temps[i]);
+      for (const w in block.wells) { const v = block.wells[w]; block.wells[w] = ord.map(i => v[i]); }
+      block.resorted = true;
+    }
     return block;
   }
 
@@ -884,7 +929,11 @@ const Blocks = (() => {
       if (!c.length) continue;
       const k = String(c[0]);
       if (/^device\s*:/i.test(k) && !meta.device) meta.device = (k.split(':')[1] || '').trim() || String(c[1] || '');
-      if (/^plate$/i.test(k) && c[1] && !meta.plate) meta.plate = String(c[1]).replace(/[\[\]]/g, '').replace(/\s+-\s+/, ' – ').trim();
+      if (/^reader type\s*:?$/i.test(k) && c[1] && !meta.device) meta.device = String(c[1]).trim();             // Gen5
+      if (/^plate( type)?\s*:?$/i.test(k) && c[1] && !meta.plate) meta.plate = String(c[1]).replace(/[\[\]]/g, '').replace(/\s+-\s+/, ' – ').trim();
+      if (/^target temperature/i.test(k) && typeof c[c.length - 1] === 'number' && meta.tempSet == null) meta.tempSet = c[c.length - 1];   // Spark
+      const sh = /^shaking \(([^)]+)\) (duration|amplitude|frequency)/i.exec(k);                                                           // Spark
+      if (sh && typeof c[c.length - 1] === 'number') { meta.shake = meta.shake || { mode: sh[1].toLowerCase() }; meta.shake[sh[2].toLowerCase()] = c[c.length - 1]; }
     }
     for (let r = 0; r < Math.min(rows.length, 400); r++) {
       const row = rows[r] || [];
@@ -921,7 +970,8 @@ const Blocks = (() => {
   function isFluor(b) {
     if (b.meta && (b.meta.ex || /fluor/i.test(b.meta.mode || ''))) return true;
     if (/\bOD\b|OD\d|abs|^\d{3}$/i.test(b.label)) return false;
-    return /fluo|gfp|rfp|yfp|mcherry|nile|lux|lum|ex\s*\d|em\s*\d/i.test(b.label);
+    // Gen5 names fluorescence reads by both wavelengths, e.g. "485,528" or "Read 2:485/20,528/20"
+    return /fluo|gfp|rfp|yfp|mcherry|nile|lux|lum|ex\s*\d|em\s*\d/i.test(b.label) || /\d{3}(\/\d+)?\s*,\s*\d{3}/.test(b.label);
   }
   return { findAll, wellName, cellToHours, isFluor };
 })();
@@ -945,9 +995,9 @@ const Plate = (() => {
   // "B4-B6", "B4:D6" (rectangle), "B4, C5"
   function parseWellList(text, f) {
     const out = [];
-    for (let part of String(text).split(/[,;\s]+/)) {
+    for (let part of String(text).replace(/\s*([-:–—])\s*/g, '$1').split(/[,;\s]+/)) {
       part = part.trim(); if (!part) continue;
-      const m = /^([A-Pa-p]\d{1,2})\s*[-:–]\s*([A-Pa-p]\d{1,2})$/.exec(part);
+      const m = /^([A-Pa-p]\d{1,2})\s*[-:–—]\s*([A-Pa-p]\d{1,2})$/.exec(part);
       if (m) {
         const a = parse(Blocks.wellName(m[1])), b = parse(Blocks.wellName(m[2]));
         for (let r = Math.min(a.r, b.r); r <= Math.max(a.r, b.r); r++)
@@ -1195,10 +1245,14 @@ const Models = (() => {
     },
     {
       id: 'baranyi', name: 'Baranyi', k: 4, pnames: ['y0', 'ymax', 'µ', 'λ'],
+      // written so that neither exp() overflows nor ln() underflows for extreme trial values:
+      // A(t) = t + ln(e^-µt + e^-h0 − e^-(µt+h0)) / µ,  ln y = ln y0 + µA − ln(1 + (e^µA − 1)·y0/ymax)
       f: (t, [y0, ymax, mu, lam]) => {
-        const h0 = mu * lam;
-        const At = t + ln(ex(-mu * t) + ex(-h0) - ex(-mu * t - h0)) / mu;
-        return ex(ln(y0) + mu * At - ln(1 + (ex(mu * At) - 1) / (ymax / y0)));
+        const a1 = mu * t, h0 = mu * lam, lo = Math.min(a1, h0), hi = Math.max(a1, h0);
+        const At = t + (Math.log1p(ex(-(hi - lo)) - ex(-hi)) - lo) / mu;
+        const a = mu * At, D = ln(ymax / y0);
+        const L = a - D > 30 ? (a - D) + Math.log1p((1 - ex(-D)) * ex(D - a)) : Math.log1p(Math.expm1(a) * ex(-D));
+        return ex(ln(y0) + a - L);
       },
       toReal: q => [Y0MIN + ex(q[0]), ex(q[1]), ex(q[2]), ex(q[3])],
       starts: s => [[s.y0, s.ymax, s.mu, Math.max(s.lag, 0.2)], [s.y0, s.ymax, s.mu * 0.6, Math.max(s.lag * 0.6, 0.2)],
@@ -1399,6 +1453,8 @@ const Analysis = (() => {
     const hi = S.tmax != null && S.tmax !== '' ? +S.tmax : Infinity;
     const idx = tAll.map((t, i) => [t, i]).filter(([t]) => t >= lo && t <= hi && Number.isFinite(t)).map(x => x[1]);
     const t = idx.map(i => tAll[i]);
+    if (t.length < 4) throw new Error(`Only ${t.length} reading${t.length === 1 ? '' : 's'} fall inside the analysis window`
+      + `${Number.isFinite(lo) || Number.isFinite(hi) ? ` (${Number.isFinite(lo) ? lo : 'start'} to ${Number.isFinite(hi) ? hi : 'end'} h)` : ''}. Widen "Analyse from / to" under Blank & processing.`);
     const used = usedWells(block);
     const wellGroup = {};
     for (const g of groups) for (const w of g.wells) wellGroup[w] = g;
@@ -1564,7 +1620,7 @@ const Analysis = (() => {
         for (const L of levels) {
           const tc = crossTime(t, od, L);
           let v = NaN;
-          if (Number.isFinite(tc)) {
+          if (Number.isFinite(tc) && tc >= f0) {
             const j = t.findIndex(x => x >= tc);
             const fv = j <= 0 ? smooth[0] : smooth[j - 1] + (smooth[j] - smooth[j - 1]) * (tc - t[j - 1]) / (t[j] - t[j - 1]);
             v = fv / L;
@@ -1727,10 +1783,27 @@ const Layout = (() => {
   function classify(block, used, fb) {
     const ws = [...used], role = {};
     const info = {};
-    for (const w of ws) { const f = M.fin(block.wells[w]); info[w] = { range: Math.max(...f) - Math.min(...f) }; }
+    for (const w of ws) { const f = M.fin(block.wells[w]); info[w] = { range: Math.max(...f) - Math.min(...f), level: M.median(f), start: M.median(f.slice(0, 3)) }; }
     const flat = ws.filter(w => info[w].range < 0.05);
-    const useFlat = flat.length && flat.length <= ws.length * 0.45;
-    for (const w of ws) role[w] = useFlat && info[w].range < 0.05 ? 'blank' : 'sample';
+    const growing = ws.filter(w => info[w].range >= 0.05);
+    // A culture that does not grow is flat too, but its cells still add OD. When the growing
+    // wells clearly start above a tight cluster of flat wells (the blanks), flat wells at the
+    // starting level of the cultures are cultures that did not grow, not blanks.
+    const nonGrowing = new Set();
+    if (flat.length >= 2 && growing.length >= 4) {
+      const s = growing.map(w => info[w].start).filter(Number.isFinite).sort((a, b) => a - b);
+      const q = p => s[Math.round(p * (s.length - 1))];
+      const med = q(0.5), thr = med - Math.max(0.01, 3 * (q(0.75) - q(0.25)));
+      const below = flat.filter(w => info[w].level < thr).map(w => info[w].level);
+      if (below.length >= 2) {
+        const lo = Math.min(...below), hi = Math.max(...below);
+        // blanks must look like medium (not empty wells) and form one group well below the cultures
+        if (M.median(below) >= 0.06 && hi - lo < med - hi) for (const w of flat) if (info[w].level >= thr) nonGrowing.add(w);
+      }
+    }
+    const blankLike = flat.filter(w => !nonGrowing.has(w));
+    const useFlat = blankLike.length && (nonGrowing.size > 0 || blankLike.length <= ws.length * 0.45);
+    for (const w of ws) role[w] = useFlat && info[w].range < 0.05 && !nonGrowing.has(w) ? 'blank' : 'sample';
     if (fb) {
       const lvl = w => M.median(M.fin(fb.wells[w] || []));
       const blanks = ws.filter(w => role[w] === 'blank' && fb.wells[w]);
@@ -1739,17 +1812,18 @@ const Layout = (() => {
         if (hi > 1.5 * lo) { const cut = Math.sqrt(lo * hi); blanks.forEach((w, i) => { if (v[i] > cut) role[w] = 'dyeblank'; }); }
       }
       const rise = w => { const f = M.movingAverage(fb.wells[w] || [], 3).filter(Number.isFinite); return f.length ? f[f.length - 1] - Math.min(...f) : 0; };
-      const grow = ws.filter(w => role[w] === 'sample' && fb.wells[w]);
+      // the cells-without-dye control grows but hardly fluoresces (cultures that did not grow are left alone)
+      const grow = ws.filter(w => role[w] === 'sample' && fb.wells[w] && info[w].range >= 0.05);
       const medRise = M.median(grow.map(rise));
       if (grow.length >= 3 && medRise > 0) for (const w of grow) if (rise(w) < 0.15 * medRise) role[w] = 'nodye';
     }
-    return role;
+    return { role, nonGrowing: [...nonGrowing] };
   }
   const PREFIX = { blank: 'Blank ', dyeblank: 'Dye blank ', nodye: 'No-dye control ' };
   function auto(block, used, orient, chunk, fb) {
     const ws = [...used];
     const fmt = Plate.formatFor(block.listedWells.length ? block.listedWells : ws);
-    const role = classify(block, used, fb);
+    const { role, nonGrowing } = classify(block, used, fb);
     const groups = [];
     const lines = orient === 'cols' ? fmt.cols : fmt.rows;
     const len = orient === 'cols' ? fmt.rows : fmt.cols;
@@ -1781,11 +1855,21 @@ const Layout = (() => {
     groups.sort((a, b) => order[a.role] - order[b.role]);
     assignBlanks(groups);
     const count = r => Object.values(role).filter(x => x === r).length;
-    return { groups, nBlank: count('blank'), nDye: count('dyeblank'), nNoDye: count('nodye'), splitLong };
+    return { groups, nBlank: count('blank'), nDye: count('dyeblank'), nNoDye: count('nodye'), splitLong, nonGrowing };
   }
 
+  /* control types written in a plate map. With a fluorescence read, "Dye blank" or "Medium + dye"
+     is the dye blank and "… no dye" the cells-without-dye control.                                */
+  const NODYE_RE = /\b(no|without|w\/o)[\s_-]*(dye|stain)|unstained|autofluo/i;
+  const DYE_RE = /dye|stain|nile|sybr|dapi|syto|propidium/i;
+  function roleFromName(n, fl) {
+    if (BLANK_RE.test(n)) return fl && DYE_RE.test(n) && !NODYE_RE.test(n) ? 'dyeblank' : 'blank';
+    return fl && NODYE_RE.test(n) ? 'nodye' : 'sample';
+  }
+  const EMPTY_CELL = /^(none|n\/?a|-+|—|–)$/i; // what plate-reader layouts write in unused wells
+
   /* Pasted plate map (grid from Excel) or "Name: A1-A3" list */
-  function fromText(text, fmt) {
+  function fromText(text, fmt, fl) {
     const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
     const isList = lines.length && lines.every(l => /:/.test(l) && Plate.parseWellList(l.split(':').slice(1).join(':'), fmt).length);
     const map = {}; // well → name
@@ -1796,29 +1880,46 @@ const Layout = (() => {
         for (const w of Plate.parseWellList(l.slice(i + 1), fmt)) map[w] = name;
       }
     } else {
-      let grid = lines.map(l => l.split(/\t|;|,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(s => s.replace(/^"|"$/g, '').trim()));
+      // cells copied from Excel are separated by tabs; only without tabs fall back to ; or ,
+      const sep = /\t/.test(text) ? /\t/ : /;/.test(text) ? /;/ : /,(?=(?:[^"]*"[^"]*")*[^"]*$)/;
+      let grid = lines.map(l => l.split(sep).map(s => s.replace(/^"|"$/g, '').trim()));
       // strip header row of 1..N and first column of A..H if present
       if (grid[0] && grid[0].filter(x => /^\d{1,2}$/.test(x)).length >= Math.min(3, fmt.cols)) grid = grid.slice(1);
       const hasRowLabels = grid.every(r => /^[A-P]$/i.test(r[0] || ''));
       grid.forEach((row, r) => {
         const cells = hasRowLabels ? row.slice(1) : row;
         const rr = hasRowLabels ? Plate.ROWS.indexOf(row[0].toUpperCase()) : r;
-        cells.forEach((v, c) => { if (v && rr >= 0) map[Plate.name(rr, c)] = v; });
+        cells.forEach((v, c) => { if (v && !EMPTY_CELL.test(v) && rr >= 0 && c < 24) map[Plate.name(rr, c)] = v; });
       });
     }
-    const byName = {};
+    const byName = Object.create(null);
     for (const w in map) (byName[map[w]] = byName[map[w]] || []).push(w);
-    const groups = Object.entries(byName).map(([n, ws]) => newGroup(n, ws, BLANK_RE.test(n) ? 'blank' : 'sample'));
+    const groups = Object.entries(byName).map(([n, ws]) => newGroup(n, ws, roleFromName(n, fl)));
     assignBlanks(groups);
     return groups;
   }
 
-  /* plain tables (no well names): group by sample names with replicate suffixes stripped */
+  /* plain tables (no well names): columns whose names differ only by a replicate number
+     ("WT_1", "WT 2", "WT rep3", "WT1") become one group. A trailing number counts as a
+     replicate number only if it is short and the numbers under one name run 1, 2, 3 …,
+     so strain names such as "PA14", "MG1655" or "FC3764" are left as they are.          */
   function fromAliases(aliases) {
-    const byName = {};
+    const parts = {};
     for (const w in aliases) {
-      const base = String(aliases[w]).replace(/[\s_.-]*(rep|r|replicate)?[\s_.-]*\d+$/i, '').trim() || aliases[w];
-      (byName[base] = byName[base] || []).push(w);
+      const nm = String(aliases[w]).trim();
+      const m = /^(.*?[^\s_.-])([\s_.-]+(?:rep|r|replicate)?[\s_.-]*|[\s_.-]*(?:rep|replicate)[\s_.-]*|)(\d{1,2})$/i.exec(nm);
+      // digits straight after the name ("WT1") only count when the name ends in a letter
+      const ok = m && (m[2] !== '' || /[A-Za-zµΔ]$/.test(m[1]));
+      parts[w] = ok ? { base: m[1], idx: +m[3], name: nm } : { base: nm, idx: null, name: nm };
+    }
+    const byBase = Object.create(null);
+    for (const w in parts) (byBase[parts[w].base] = byBase[parts[w].base] || []).push(w);
+    const byName = Object.create(null);
+    for (const [base, ws] of Object.entries(byBase)) {
+      const idx = ws.map(w => parts[w].idx);
+      const isRep = ws.length >= 2 && idx.every(i => i != null) && new Set(idx).size === idx.length
+        && Math.min(...idx) <= 1 && Math.max(...idx) <= ws.length + 1;
+      for (const w of ws) { const k = isRep ? base : parts[w].name; (byName[k] = byName[k] || []).push(w); }
     }
     const groups = Object.entries(byName).map(([n, ws]) => newGroup(n, ws, BLANK_RE.test(n) ? 'blank' : 'sample'));
     assignBlanks(groups);
@@ -1835,7 +1936,8 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const fmt = (v, d = 3) => {
   if (v == null || !Number.isFinite(v)) return '—';
   const a = Math.abs(v);
-  if (a !== 0 && (a >= 1e5 || a < 10 ** -d)) return v.toExponential(2);
+  // whole numbers (fluorescence in RFU) stay readable up to 10 million
+  if (a !== 0 && (a >= (d <= 1 ? 1e7 : 1e5) || a < 10 ** -d)) return v.toExponential(2);
   return v.toFixed(d);
 };
 
@@ -1914,8 +2016,23 @@ const Charts = (() => {
     const fsT = o.fsTick, fsA = o.fsAxis;
     const yt = o.ylog ? logTicks(o.y[0], o.y[1]) : niceTicks(o.y[0], o.y[1], o.yCount || 6);
     const yLabW = Math.max(...yt.map(v => textW(tickLabel(v), fsT)), 10);
-    const legendW = o.legend && o.legend.length ? Math.min(W * 0.35, Math.max(...o.legend.map(l => textW(l.label, o.fsLeg))) + 34) : 0;
-    const m = { l: Math.max(yLabW + fsA * 1.6 + 14, o.leftMargin || 0), r: 14 + legendW + (o.extraRight || 0), t: o.title ? fsA * 2.2 + 6 : 14, b: (o.xLabelsRot ? o.xLabelsRot : fsT + 8) + fsA * 1.6 + 12 };
+    const mt = o.title ? fsA * 2.2 + 6 : 14, mb = (o.xLabelsRot ? o.xLabelsRot : fsT + 8) + fsA * 1.6 + 12;
+    // legend: as many columns as needed (up to 45% of the width); what still does not fit becomes "+ n more"
+    const lh = (o.fsLeg || 12) * 1.45;
+    let legendW = 0, legCols = 1, perCol = 1, colW = 0, legShown = 0;
+    if (o.legend && o.legend.length) {
+      const n = o.legend.length, natural = Math.max(...o.legend.map(l => textW(l.label, o.fsLeg))) + 34;
+      perCol = Math.max(1, Math.floor((H - mt - mb - 4) / lh));
+      if (n <= perCol) colW = Math.min(W * 0.35, natural);
+      else {
+        const minW = textW('M'.repeat(7), o.fsLeg) + 34;
+        legCols = Math.max(1, Math.min(Math.ceil(n / perCol), Math.floor(W * 0.45 / minW)));
+        colW = Math.max(minW, Math.min(natural, W * 0.45 / legCols));
+      }
+      legendW = legCols * colW;
+      legShown = Math.min(n, legCols * perCol);
+    }
+    const m = { l: Math.max(yLabW + fsA * 1.6 + 14, o.leftMargin || 0), r: 14 + legendW + (o.extraRight || 0), t: mt, b: mb };
     const pw = W - m.l - m.r, ph = H - m.t - m.b;
     const x = o.xBand ? null : v => m.l + (v - o.x[0]) / (o.x[1] - o.x[0]) * pw;
     const ly0 = o.ylog ? Math.log10(o.y[0]) : 0, ly1 = o.ylog ? Math.log10(o.y[1]) : 0;
@@ -1944,15 +2061,17 @@ const Charts = (() => {
     if (o.title) s += `<text x="${m.l + pw / 2}" y="${fsA * 1.5}" font-size="${fsA * 1.15}" font-weight="bold" text-anchor="middle" fill="#111">${esc(o.title)}</text>`;
     let leg = '';
     if (legendW) {
-      const lh = o.fsLeg * 1.45; let ly = m.t + 4;
-      for (const l of o.legend) {
+      const n = o.legend.length, more = n > legShown ? n - legShown + 1 : 0; // the last slot then says "+ n more"
+      const maxCh = Math.max(4, Math.floor((colW - 30) / (o.fsLeg * 0.56)));
+      for (let k = 0; k < legShown; k++) {
+        const l = o.legend[k], x0 = W - legendW + Math.floor(k / perCol) * colW, ly = m.t + 4 + (k % perCol) * lh;
+        if (more && k === legShown - 1) { leg += `<text x="${x0 + 6}" y="${ly}" font-size="${o.fsLeg}" font-style="italic" dominant-baseline="middle" fill="#555">+ ${more} more</text>`; break; }
+        const lab = l.label.length > maxCh ? l.label.slice(0, maxCh - 1) + '…' : l.label;
         leg += `<g ${l.id ? `data-leg="${esc(l.id)}" style="cursor:pointer"` : ''} opacity="${l.off ? 0.3 : 1}">`
-          + `<rect x="${W - legendW}" y="${ly - lh / 2}" width="${legendW}" height="${lh}" fill="#fff" fill-opacity="0"/>`
-          + `<line x1="${W - legendW + 4}" x2="${W - legendW + 22}" y1="${ly}" y2="${ly}" stroke="${l.color}" stroke-width="${l.dash ? 2 : 3}" ${l.dash ? 'stroke-dasharray="4 3"' : ''}/>`
-          + (l.marker ? `<circle cx="${W - legendW + 13}" cy="${ly}" r="3.2" fill="${l.color}"/>` : '')
-          + `<text x="${W - legendW + 28}" y="${ly}" font-size="${o.fsLeg}" dominant-baseline="middle" fill="#111">${esc(l.label)}</text></g>`;
-        ly += lh;
-        if (ly > H - m.b) break;
+          + `<rect x="${x0}" y="${ly - lh / 2}" width="${colW}" height="${lh}" fill="#fff" fill-opacity="0"/>`
+          + `<line x1="${x0 + 4}" x2="${x0 + 22}" y1="${ly}" y2="${ly}" stroke="${l.color}" stroke-width="${l.dash ? 2 : 3}" ${l.dash ? 'stroke-dasharray="4 3"' : ''}/>`
+          + (l.marker ? `<circle cx="${x0 + 13}" cy="${ly}" r="3.2" fill="${l.color}"/>` : '')
+          + `<text x="${x0 + 28}" y="${ly}" font-size="${o.fsLeg}" dominant-baseline="middle" fill="#111">${lab !== l.label ? `<title>${esc(l.label)}</title>` : ''}${esc(lab)}</text></g>`;
       }
     }
     const clip = 'c' + Math.random().toString(36).slice(2, 8);
@@ -2363,7 +2482,7 @@ const Export = (() => {
   const pngBlob = (svg, scale) => new Promise(res => svgToPng(svg, scale, res));
   return { xlsx, csv, download, svgToPng, pngBlob, zip };
 })();
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.6';
 /* ═════════════════════════════════════════════════════════════════════
    7. THE APP — state, plate editor, views, events
    ═════════════════════════════════════════════════════════════════════ */
@@ -2447,6 +2566,9 @@ const App = (() => {
     st.fmt = b.forcedFormat || Plate.formatFor(listed);
     // a partial list of wells (e.g. Tecan lists only measured wells) is almost always a 96-well plate
     if (!b.forcedFormat && st.fmt.n < 96 && (b.layout !== 'columns' || new Set(listed).size !== st.fmt.n)) st.fmt = Plate.formatFor(96);
+    // the plate type written in the file ("96 WELL PLATE", "COR96fb …") wins when it holds every well
+    const pm = !b.forcedFormat && b.meta && b.meta.plate && /(?:^|\D)(6|12|24|48|96|384)(?=\D|$)/.exec(b.meta.plate);
+    if (pm) { const f = Plate.FORMATS.find(x => x.n === +pm[1]), all = new Set(Plate.all(f)); if (listed.every(w => all.has(w))) st.fmt = f; }
   }
   function refreshChrome() {
     const b = block();
@@ -2465,28 +2587,39 @@ const App = (() => {
     $('fileChip').textContent = b ? (st.fileName || '') + (st.blocks.length > 1 ? ' · ' + b.label + (flBlock() ? ' + ' + flBlock().label : '') : '') : 'no data loaded';
     ['btnSave', 'btnExport', 'btnReset'].forEach(id => $(id).disabled = !b);
   }
+  /* what the automatic layout found, in words */
+  function autoSummary(a, fb) {
+    const nG = st.groups.filter(g => isSampleRole(g.role)).length, nB = st.groups.filter(g => !isSampleRole(g.role)).length;
+    const ctl = fb ? ` Controls found: ${a.nBlank || 0} medium-blank, ${a.nDye || 0} dye-blank and ${a.nNoDye || 0} cells-without-dye well${(a.nNoDye || 0) === 1 ? '' : 's'}.` : '';
+    const ng = a.nonGrowing || [];
+    return `Auto-layout made <b>${nG}</b> sample group${nG === 1 ? '' : 's'} and <b>${nB}</b> control group${nB === 1 ? '' : 's'}.${ctl}`
+      + (ng.length ? ` ${ng.length} flat well${ng.length > 1 ? 's' : ''} (${esc(Plate.compact(ng))}) start${ng.length > 1 ? '' : 's'} at the same OD as the growing cultures, so ${ng.length > 1 ? 'they were' : 'it was'} kept as ${ng.length > 1 ? 'samples' : 'a sample'} that did not grow rather than blank${ng.length > 1 ? 's' : ''}.` : '')
+      + (a.splitLong ? ' Long rows of growing wells were kept as separate samples (one well each); group replicates on the Plate tab if needed.' : '') + ' Check them on the Plate tab.';
+  }
   function setBlock(i, fresh) {
     st.blockIdx = i;
     const b = block();
     prepareBlock();
     st.cache.clear();
     st.V.zoom = {};
+    st.R = null; st.runError = null;   // results of the previous data must not be shown with this one
+    if (fresh) Object.assign(st.V, { ref: '', sortKey: null });
     if (fresh || !st.groups.length) {
+      st.autoInfo = null;
       if (b.aliases) st.groups = Layout.fromAliases(b.aliases);
       else { const a = Layout.auto(b, st.used, 'rows', st.V.autoChunk, flBlock()); st.groups = a.groups; st.autoInfo = a; }
       const t = b.times, a = st.autoInfo || {}, fb = flBlock();
       if (fb) st.D.flab = fb.label + ' fluorescence (RFU, corrected)';
       if (/OD|600|abs/i.test(b.label) || /^\d+$/.test(b.label)) st.D.ylab = (/^\d+$/.test(b.label) ? 'OD' + b.label : b.label) + ' (blank-corrected)';
-      const nG = st.groups.filter(g => isSampleRole(g.role)).length, nB = st.groups.filter(g => !isSampleRole(g.role)).length;
-      const ctl = fb ? ` Controls found: ${a.nBlank || 0} medium-blank, ${a.nDye || 0} dye-blank and ${a.nNoDye || 0} cells-without-dye well${(a.nNoDye || 0) === 1 ? '' : 's'}.` : '';
+      const nG = st.groups.filter(g => isSampleRole(g.role)).length;
       message(`Found <b>${st.used.size}</b> wells with data on a ${st.fmt.n}-well plate (${esc(Plate.compact([...st.used]))}), `
         + `${t.length} readings from ${fmt(t[0], 2)} to ${fmt(t[t.length - 1], 2)} h`
         + (fb ? `, with <b>${esc(b.label)}</b> and <b>${esc(fb.label)}</b> analysed together. ` : '. ')
-        + (b.aliases ? `Grouped ${nG} samples by name.` : `Auto-layout made <b>${nG}</b> sample group${nG === 1 ? '' : 's'} and <b>${nB}</b> control group${nB === 1 ? '' : 's'}.${ctl}`
-          + (a.splitLong ? ' Long rows of growing wells were kept as separate samples (one well each); group replicates on the Plate tab if needed.' : '') + ' Check them on the Plate tab.')
-        + (b.overflow ? ` <br>${b.overflow} overflow readings were treated as missing.` : ''), b.overflow ? 'warn' : 'ok');
+        + (b.aliases ? `Grouped ${nG} samples by name.` : autoSummary(a, fb))
+        + (b.resorted ? ' <br>The readings were not in time order in the file; they were sorted by time.' : '')
+        + (b.overflow ? ` <br>${b.overflow} overflow readings were treated as missing.` : ''), b.overflow || b.resorted ? 'warn' : 'ok');
     }
-    if (fresh) st.initial = JSON.stringify({ g: st.groups, D: st.D });
+    if (fresh) st.initial = JSON.stringify({ g: st.groups, D: st.D, b: st.blockIdx, fl: st.flIdx, unit: st.S.timeUnit });
     writeInputs();
     refreshChrome();
     scheduleRun(0);
@@ -2506,9 +2639,10 @@ const App = (() => {
     const t0 = performance.now();
     try {
       st.R = await Analysis.run(block(), st.groups, st.excluded, st.S, f => { $('prog').style.width = (f * 100).toFixed(0) + '%'; }, st.cache, flBlock());
+      st.runError = null;
       const nw = Object.keys(st.R.wells).length;
       $('runStatus').textContent = `${nw} wells analysed in ${((performance.now() - t0) / 1000).toFixed(1)} s`;
-    } catch (e) { console.error(e); $('runStatus').textContent = 'Error: ' + e.message; }
+    } catch (e) { console.error(e); st.R = null; st.runError = e.message || String(e); $('runStatus').textContent = 'Analysis stopped – see the message on the right.'; }
     st.running = false;
     setTimeout(() => { $('prog').style.width = '0'; }, 400);
     if (st.again) { st.again = false; return runNow(); }
@@ -2568,10 +2702,15 @@ const App = (() => {
     if (!block()) return;
     if (hist.timer) recordNow();
     const init = st.initial ? JSON.parse(st.initial) : null;
+    const unitNow = st.S.timeUnit;
     st.S = clone(DEFAULT_SETTINGS); st.D = init ? init.D : clone(DEFAULT_DISPLAY);
+    if (init && init.unit) st.S.timeUnit = init.unit;
+    // the file is read again if its time unit was changed after opening it
+    if (st.sheetsCache && st.S.timeUnit !== unitNow) st.blocks = Blocks.findAll(st.sheetsCache, st.S.timeUnit);
+    if (init && init.b != null && st.blocks[init.b]) { st.blockIdx = init.b; st.flIdx = init.fl ?? null; }
     st.excluded = new Set(); st.sel.clear();
     Object.assign(st.V, { zoom: {}, ref: '', sortKey: null, plateMode: 'layout', ylog: false, panelLog: false, curveData: 'corr' });
-    st.cache.clear();
+    st.cache.clear(); st.R = null; st.runError = null;
     writeInputs();
     if (init) { st.groups = init.g; Layout.resetIds(st.groups); prepareBlock(); refreshChrome(); scheduleRun(0); }
     else setBlock(st.blockIdx, true);
@@ -2583,7 +2722,7 @@ const App = (() => {
     if (hist.timer) recordNow();
     const had = !!block();
     st.blocks = []; st.flIdx = null; st.fileName = null; st.sheetsCache = null; st.groups = []; st.excluded = new Set(); st.sel.clear();
-    st.S = clone(DEFAULT_SETTINGS); st.D = clone(DEFAULT_DISPLAY); st.R = null; st.initial = null; st.cache.clear();
+    st.S = clone(DEFAULT_SETTINGS); st.D = clone(DEFAULT_DISPLAY); st.R = null; st.runError = null; st.initial = null; st.cache.clear();
     Object.assign(st.V, { tab: 'plate', zoom: {}, ref: '', sortKey: null, plateMode: 'layout', ylog: false, panelLog: false, curveData: 'corr' });
     $('runStatus').textContent = '';
     writeInputs(); refreshChrome();
@@ -2598,9 +2737,22 @@ const App = (() => {
     s_autofl: 'autofl', s_fMin: 'fMin', s_fStart: 'fStart', s_fodLevels: 'fodLevels', s_odLinMax: 'odLinMax' };
   const D_FIELDS = { d_err: 'err', d_errStyle: 'errStyle', d_palette: 'palette', d_wells: 'wells', d_points: 'points', d_blanks: 'blanks', d_legend: 'legend',
     d_lw: 'lw', d_ps: 'ps', d_fsAxis: 'fsAxis', d_fsTick: 'fsTick', d_fsLeg: 'fsLeg', d_w: 'w', d_h: 'h', d_title: 'title', d_xlab: 'xlab', d_ylab: 'ylab', d_ymin: 'ymin', d_ymax: 'ymax', d_flab: 'flab' };
-  function readInput(el) {
+  // number fields that may be left empty ("auto" / "start" / "end"); the others fall back to their default
+  const OPTIONAL = new Set(['tmin', 'tmax', 'fMin', 'fStart', 'ymin', 'ymax']);
+  function readInput(el, key, defaults) {
     if (el.type === 'checkbox') return el.checked;
-    if (el.type === 'number') return el.value === '' ? null : +el.value;
+    if (el.type === 'number') {
+      let v = el.value === '' ? null : +el.value;
+      if (v == null || !Number.isFinite(v)) {
+        if (OPTIONAL.has(key)) { if (el.value !== '') el.value = ''; return null; }
+        v = defaults[key];
+      } else {
+        if (el.min !== '' && v < +el.min) v = +el.min;
+        if (el.max !== '' && v > +el.max) v = +el.max;
+      }
+      if (String(v) !== el.value) el.value = v ?? '';
+      return v;
+    }
     return el.value;
   }
   function writeInputs() {
@@ -2611,14 +2763,34 @@ const App = (() => {
   }
   function bindSettings() {
     for (const id in S_FIELDS) $(id).addEventListener('change', e => {
-      const key = S_FIELDS[id]; st.S[key] = readInput(e.target);
-      if (key === 'source') resummarize(); else scheduleRun(150);
+      const key = S_FIELDS[id]; st.S[key] = readInput(e.target, key, DEFAULT_SETTINGS);
+      if (key === 'source') {
+        // µmax taken from a model that is not being fitted: fit it
+        const id2 = st.S.source;
+        if (Models.byId[id2] && !st.S.models[id2]) { st.S.models[id2] = true; writeInputs(); flash(`${Models.byId[id2].name} fitting switched on, because µmax and lag now come from it.`); scheduleRun(100); }
+        else if (id2 === 'best' && !Models.list.some(m => st.S.models[m.id])) { Models.list.forEach(m => { st.S.models[m.id] = true; }); writeInputs(); flash('All models switched on, so that the best one can be picked for each well.'); scheduleRun(100); }
+        else resummarize();
+      } else scheduleRun(150);
     });
-    for (const m of Models.list) $('m_' + m.id).addEventListener('change', e => { st.S.models[m.id] = e.target.checked; scheduleRun(150); });
-    for (const id in D_FIELDS) $(id).addEventListener(['d_title', 'd_xlab', 'd_ylab', 'd_flab'].includes(id) ? 'input' : 'change', e => { st.D[D_FIELDS[id]] = readInput(e.target); render(); });
+    for (const m of Models.list) $('m_' + m.id).addEventListener('change', e => {
+      st.S.models[m.id] = e.target.checked;
+      // the model that µmax comes from was switched off: fall back to the best remaining model, or model-free
+      if (!e.target.checked && (st.S.source === m.id || st.S.source === 'best')) {
+        const any = Models.list.some(x => st.S.models[x.id]);
+        if (st.S.source === m.id || !any) { st.S.source = any ? 'best' : 'mf'; writeInputs(); flash(`µmax and lag now come from ${any ? 'the best remaining model' : 'the model-free method'}.`); }
+      }
+      scheduleRun(150);
+    });
+    for (const id in D_FIELDS) $(id).addEventListener(['d_title', 'd_xlab', 'd_ylab', 'd_flab'].includes(id) ? 'input' : 'change', e => { st.D[D_FIELDS[id]] = readInput(e.target, D_FIELDS[id], DEFAULT_DISPLAY); render(); });
     $('timeUnit').addEventListener('change', e => {
+      if (!block()) { st.S.timeUnit = e.target.value; return; }   // used when the next file is opened
+      if (!st.sheetsCache) {
+        e.target.value = st.S.timeUnit;
+        flash('The time unit of a saved project or the demo plate cannot be changed. Open the original plate-reader file to read it with another unit.');
+        return;
+      }
       st.S.timeUnit = e.target.value;
-      if (st.sheetsCache) { const keep = st.groups; st.blocks = Blocks.findAll(st.sheetsCache, st.S.timeUnit); st.groups = keep; setBlock(Math.min(st.blockIdx, st.blocks.length - 1), false); }
+      const keep = st.groups; st.blocks = Blocks.findAll(st.sheetsCache, st.S.timeUnit); st.groups = keep; setBlock(Math.min(st.blockIdx, st.blocks.length - 1), false);
     });
     $('blockSel').addEventListener('change', e => { const i = +e.target.value; if (st.flIdx === i) st.flIdx = null; setBlock(i, false); });
     $('flSel').addEventListener('change', e => {
@@ -2641,6 +2813,7 @@ const App = (() => {
     st.lastSvg = null; st.lastTable = null;
     record();
     if (!block()) { v.innerHTML = welcomeHtml(); bindWelcome(); return; }
+    if (!st.R && st.runError) { v.innerHTML = `<div class="card"><div class="msg err">The analysis could not run: ${esc(st.runError)}</div></div>`; return; }
     if (!st.R) { v.innerHTML = `<div class="card"><div class="status">Analysing…</div></div>`; return; }
     ({ plate: viewPlate, curves: viewCurves, panels: viewPanels, rate: viewRate, bars: viewBars, stats: viewStats, table: viewTable, raw: viewRaw, methods: viewMethods })[st.V.tab]();
     const cs = $('chartSave'); if (cs) cs.onclick = openSaveDialog;
@@ -2801,7 +2974,9 @@ const App = (() => {
       plate.querySelectorAll('.well').forEach(el => el.classList.toggle('sel', st.sel.has(el.dataset.w)));
       updateSelBar();
     };
+    let lastTouch = 0; // a tap also fires a mouse event afterwards; that one must not reset the selection
     plate.addEventListener('mousedown', e => {
+      if (Date.now() - lastTouch < 800) return;
       const el = e.target.closest('.well'); if (!el) return;
       e.preventDefault();
       dragStart = el.dataset.w; adding = e.shiftKey || e.ctrlKey || e.metaKey;
@@ -2818,7 +2993,7 @@ const App = (() => {
     plate.addEventListener('mouseleave', hideTip);
     window.onmouseup = () => { dragStart = null; };
     // touch: tap to toggle
-    plate.addEventListener('touchstart', e => { const el = e.target.closest('.well'); if (!el || el.classList.contains('empty')) return; const w = el.dataset.w; st.sel.has(w) ? st.sel.delete(w) : st.sel.add(w); paintSel(); }, { passive: true });
+    plate.addEventListener('touchstart', e => { lastTouch = Date.now(); const el = e.target.closest('.well'); if (!el || el.classList.contains('empty')) return; const w = el.dataset.w; st.sel.has(w) ? st.sel.delete(w) : st.sel.add(w); paintSel(); }, { passive: true });
     plate.addEventListener('click', e => {
       const h = e.target.closest('.hd'); if (!h) return;
       let ws = [];
@@ -2886,7 +3061,10 @@ const App = (() => {
   function bindGroupEditor() {
     $('autoChunk').value = st.V.autoChunk;
     $('autoChunk').addEventListener('change', e => { st.V.autoChunk = +e.target.value; });
-    const auto = orient => { const a = Layout.auto(block(), st.used, orient, st.V.autoChunk); st.groups = a.groups; layoutChanged(); };
+    const auto = orient => {
+      const a = Layout.auto(block(), st.used, orient, st.V.autoChunk, flBlock());
+      st.groups = a.groups; st.autoInfo = a; message(autoSummary(a, flBlock())); layoutChanged();
+    };
     $('autoRows').addEventListener('click', () => auto('rows'));
     $('autoCols').addEventListener('click', () => auto('cols'));
     $('clearLayout').addEventListener('click', e => {
@@ -2900,13 +3078,27 @@ const App = (() => {
         const act = e.target.dataset.act;
         if (act === 'name') { g.name = e.target.value.trim() || g.name; render(); }
         else if (act === 'color') { g.color = e.target.value; render(); }
-        else if (act === 'role') { g.role = e.target.value; if (isBlankRole(g.role)) { g.blank = null; Layout.assignBlanks(st.groups, new Set(st.groups.filter(x => !isBlankRole(x.role) && !x.blank).map(x => x.id))); } else Layout.assignBlanks(st.groups, new Set([g.id])); layoutChanged(); }
+        else if (act === 'role') {
+          g.role = e.target.value;
+          if (isBlankRole(g.role)) { g.blank = null; Layout.assignBlanks(st.groups, new Set(st.groups.filter(x => !isBlankRole(x.role) && !x.blank).map(x => x.id))); }
+          else {
+            // groups that used this one as their blank need another blank now
+            const orphans = st.groups.filter(x => x.blank === g.id).map(x => x.id);
+            st.groups.forEach(x => { if (x.blank === g.id) x.blank = null; });
+            Layout.assignBlanks(st.groups, new Set([g.id, ...orphans]));
+          }
+          layoutChanged();
+        }
         else if (act === 'blank') { g.blank = e.target.value || null; layoutChanged(); }
         else if (act === 'wells') {
           const ws = Plate.parseWellList(e.target.value, st.fmt);
           if (!ws.length) { e.target.value = Plate.compact(g.wells); return; }
           const set = new Set(ws); for (const o of st.groups) if (o !== g) o.wells = o.wells.filter(w => !set.has(w));
-          g.wells = ws; st.groups = st.groups.filter(o => o.wells.length); layoutChanged();
+          g.wells = ws;
+          const gone = new Set(st.groups.filter(o => !o.wells.length).map(o => o.id));
+          st.groups = st.groups.filter(o => o.wells.length);
+          if (gone.size) { const need = st.groups.filter(o => gone.has(o.blank)).map(o => o.id); st.groups.forEach(o => { if (gone.has(o.blank)) o.blank = null; }); Layout.assignBlanks(st.groups, new Set(need)); }
+          layoutChanged();
         }
       });
       row.addEventListener('click', e => {
@@ -2925,7 +3117,7 @@ const App = (() => {
     const bg = document.createElement('div'); bg.className = 'modal-bg';
     bg.innerHTML = `<div class="modal" role="dialog" aria-label="Paste plate map">
       <h3>Paste a plate map</h3>
-      <p class="note">Either copy the plate-shaped block of sample names from Excel (with or without the A–H / 1–12 headers), or type one group per line as <code>Name: B4-B6, C4</code>. Rectangles like <code>B4:D6</code> work too. Names containing <i>blank</i>, <i>medium</i>, <i>media</i> or <i>sterile</i> become blank groups, and every group gets the blank whose name and position match best.</p>
+      <p class="note">Either copy the plate-shaped block of sample names from Excel (with or without the A–H / 1–12 headers), or type one group per line as <code>Name: B4-B6, C4</code>. Rectangles like <code>B4:D6</code> work too. Names containing <i>blank</i>, <i>medium</i>, <i>media</i> or <i>sterile</i> become blank groups, and every group gets the blank whose name and position match best.${flBlock() ? ' With a fluorescence read, a blank whose name mentions the dye (<i>Dye blank</i>, <i>Medium + Nile red</i>) becomes a dye blank, and a name with <i>no dye</i> becomes the cells-without-dye control.' : ''}</p>
       <textarea id="pasteText" placeholder="\t1\t2\t3\t4\nA\tBlank LB\tWT LB\tWT LB\tWT LB\nB\tBlank LB\tΔmutA LB\tΔmutA LB\tΔmutA LB\n\n— or —\n\nWT LB: A2-A4\nBlank LB: A1, B1"></textarea>
       <div class="foot"><button class="btn" id="pCancel">Cancel</button><button class="btn primary" id="pOk">Apply layout</button></div></div>`;
     document.body.appendChild(bg);
@@ -2934,7 +3126,7 @@ const App = (() => {
     $('pCancel').onclick = close;
     bg.addEventListener('click', e => { if (e.target === bg) close(); });
     $('pOk').onclick = () => {
-      const groups = Layout.fromText($('pasteText').value, st.fmt);
+      const groups = Layout.fromText($('pasteText').value, st.fmt, !!flBlock());
       if (!groups.length) { $('pasteText').style.borderColor = 'var(--pink)'; return; }
       st.groups = groups; close(); layoutChanged();
     };
@@ -2964,8 +3156,13 @@ const App = (() => {
   }
 
   /* ---------- chart helpers ---------- */
-  // st.onlyIds limits charts to chosen groups while "Save charts…" draws them
+  // st.onlyIds limits charts to chosen groups while "Save charts…" draws them;
+  // groups picked there are drawn even if they are hidden on screen
   const chartGroups = () => st.groups.filter(g => (st.D.blanks || isSampleRole(g.role)) && st.R.groups[g.id] && st.R.groups[g.id].n && (!st.onlyIds || st.onlyIds.has(g.id)));
+  const isHidden = g => !!g.hidden && !st.onlyIds;
+  // "± SD" etc. on an axis label only when some drawn group has replicate wells
+  const errSuffix = () => st.D.err !== 'none' && chartGroups().some(g => !isHidden(g) && st.R.groups[g.id].n > 1) ? ' ' + Charts.ERR_LABEL[st.D.err] : '';
+  let pendingHide = null; // a click hides a line a moment later, so that a double-click can still reset the zoom
   function paperHtml(svg, extra = '') { return `<div class="paper" id="paper">${svg}</div>${extra}`; }
   function bindLegend(after) {
     $('paper').addEventListener('click', e => {
@@ -2978,12 +3175,13 @@ const App = (() => {
     const vb = svg.viewBox.baseVal;
     return { x: (e.clientX - r.left) * vb.width / r.width, y: (e.clientY - r.top) * vb.height / r.height, svg };
   }
-  const timeToolbar = (extra) => {
-    const nHid = st.R ? st.groups.filter(g => g.hidden && (st.D.blanks || isSampleRole(g.role))).length : 0;
-    return `<div class="toolbar">${extra}<button class="btn small" id="chartSave" title="Save the chart for chosen groups, together or one file per group">Save charts…</button>`
-      + (nHid ? `<button class="btn small" id="showAll" title="Bring back every hidden group">Show all (${nHid} hidden)</button>` : '')
-      + `<div class="grow"></div><span class="status">Point at a line to see its name · click a line to hide it · click a legend entry to show or hide · drag to zoom, double-click for the full view</span></div>`;
+  const showAllBtn = (samplesOnly) => {
+    const nHid = st.R ? st.groups.filter(g => g.hidden && ((!samplesOnly && st.D.blanks) || isSampleRole(g.role))).length : 0;
+    return nHid ? `<button class="btn small" id="showAll" title="Bring back every hidden group">Show all (${nHid} hidden)</button>` : '';
   };
+  const timeToolbar = (extra) => `<div class="toolbar">${extra}<button class="btn small" id="chartSave" title="Save the chart for chosen groups, together or one file per group">Save charts…</button>`
+      + showAllBtn()
+      + `<div class="grow"></div><span class="status">Point at a line to see its name · click a line to hide it · click a legend entry to show or hide · drag to zoom, double-click for the full view</span></div>`;
 
   /* ---------- point at a line to name it, click to hide it ---------- */
   // pixel polylines for every drawn series (and individual wells when shown), in the outer SVG's coordinates
@@ -3037,14 +3235,17 @@ const App = (() => {
       highlight(h.ln.sid);
       const L = h.ln, i = h.i, g = groupById(L.sid);
       const where = L.xKind === 'od' ? `OD ${fmt(L.xs[i], 3)} · F ${fmt(L.ys[i], 0)} · F/OD ${fmt(L.ys[i] / L.xs[i], 0)}` : `${fmt(L.xs[i], 2)} h · ${fmt(L.ys[i], L.d)}${L.unit ? ' ' + L.unit : ''}`;
-      showTip(`<span class="dot" style="background:${colorMap()[L.sid] || '#999'}"></span><b style="font-size:13px">${esc(L.label)}</b><br>${where}<br><i>click to hide${g ? '' : ''}</i>`, e);
+      showTip(`<span class="dot" style="background:${colorMap()[L.sid] || '#999'}"></span><b style="font-size:13px">${esc(L.label)}</b><br>${where}${g ? '<br><i>click to hide</i>' : ''}`, e);
     });
     paper.addEventListener('mouseleave', () => { highlight(null); delete paper.dataset.onLine; });
     paper.addEventListener('click', e => {
       if (!cur || Date.now() - (st.lastDrag || 0) < 300 || e.target.closest('[data-leg]')) return;
       const g = groupById(cur); if (!g) return;
-      g.hidden = true; hideTip(); render();
-      flash(`${g.name} hidden. Click it in the legend, or "Show all", to bring it back.`);
+      clearTimeout(pendingHide);
+      pendingHide = setTimeout(() => {
+        pendingHide = null; g.hidden = true; hideTip(); render();
+        flash(`${g.name} hidden. Click it in the legend, or "Show all", to bring it back.`);
+      }, 350);
     });
   }
 
@@ -3112,7 +3313,7 @@ const App = (() => {
       const y = h >= 8 ? [fy(ry + h), fy(ry)] : yd.slice();
       setZoom(key, x, y, C);
     };
-    paper.addEventListener('dblclick', () => { if (st.V.zoom[key]) { st.V.zoom[key] = null; render(); } });
+    paper.addEventListener('dblclick', () => { clearTimeout(pendingHide); pendingHide = null; if (st.V.zoom[key]) { st.V.zoom[key] = null; render(); } });
   }
 
   /* ---------- CURVES ---------- */
@@ -3136,7 +3337,7 @@ const App = (() => {
       else { y = gr.mean; sd = gr.sd; wells = gr.wells.map(w => ({ id: w, y: R.wells[w].smooth })); }
       n = R.t.map((_, j) => wells.filter(x => Number.isFinite(x.y[j])).length);
       const err = sd.map((v, j) => Number.isFinite(v) ? Charts.errOf(v, n[j], D.err) : NaN);
-      return { id: g.id, label: g.name + (gr.n > 1 ? ` (n=${gr.n})` : ''), color: cm[g.id], t: R.t, y, err, wells, off: g.hidden, n };
+      return { id: g.id, label: g.name + (gr.n > 1 ? ` (n=${gr.n})` : ''), color: cm[g.id], t: R.t, y, err, wells, off: isHidden(g), n };
     });
   }
   const CURVE_VIEWS = [['od', 'OD only'], ['fl', 'Fluorescence only'], ['dual', 'OD + fluorescence (two y-axes)'], ['stack', 'OD and fluorescence stacked'],
@@ -3147,7 +3348,7 @@ const App = (() => {
     const view = isDual ? (V.cView || 'dual') : 'od';
     const zkey = 'curves:' + view;
     const raw = V.curveData === 'raw';
-    const errTxt = D.err !== 'none' ? ' ' + Charts.ERR_LABEL[D.err] : '';
+    const errTxt = errSuffix();
     const odLab = raw ? (D.ylab || 'OD').replace(/\s*\(blank-corrected\)/, '') + ' (raw)' : D.ylab;
     const flLab = raw ? (D.flab || 'Fluorescence').replace(/,?\s*corrected\)?/, ')').replace('()', '') + ' (raw)' : D.flab;
     const common = { W: D.w, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg, legend: D.legend, lw: D.lw, ps: D.ps, points: D.points,
@@ -3213,12 +3414,12 @@ const App = (() => {
     else if (view === 'fvod') lines = lineSet(C, { xKind: 'od' });
     else lines = lineSet(C, { d: view === 'od' ? 3 : 0, unit: view === 'od' ? '' : view === 'fl' ? 'RFU' : 'RFU/OD' });
     bindLineHover(lines);
-    if (view !== 'fvod') bindCrosshair(C, 'OD');
+    if (view !== 'fvod') bindCrosshair(C, view === 'od' ? 3 : 0);
     bindZoom(C, zkey);
     st.lastSvg = svg; st.lastName = { od: 'growth_curves', fl: 'fluorescence', dual: 'od_and_fluorescence', stack: 'od_fluorescence_stacked', fod: 'F_per_OD', fvod: 'F_vs_OD' }[view];
     st.lastTable = table;
   }
-  function bindCrosshair(C, unit) {
+  function bindCrosshair(C, d = 3) { // d: decimals shown (0 for fluorescence)
     const paper = $('paper');
     paper.addEventListener('mousemove', e => {
       if (paper.dataset.dragging) return;
@@ -3232,7 +3433,7 @@ const App = (() => {
       const xx = F.x(st.R.t[j]); setL('x1', xx); setL('x2', xx); setL('visibility', 'visible');
       if (C.tipRows) { showTip(`<b>${fmt(st.R.t[j], 2)} h</b><br>` + C.tipRows(j).slice(0, 16).join('<br>'), e); return; }
       const rows = C.vis.map(s => [s, s.y[j], s.err[j]]).filter(r => Number.isFinite(r[1])).sort((a, b) => b[1] - a[1]).slice(0, 14);
-      showTip(`<b>${fmt(st.R.t[j], 2)} h</b><br>` + rows.map(([s, v, er]) => `<span class="dot" style="background:${s.color}"></span>${esc(s.label)}: ${fmt(v, 3)}${Number.isFinite(er) && st.D.err !== 'none' ? ' ± ' + fmt(er, 3) : ''}`).join('<br>'), e);
+      showTip(`<b>${fmt(st.R.t[j], 2)} h</b><br>` + rows.map(([s, v, er]) => `<span class="dot" style="background:${s.color}"></span>${esc(s.label)}: ${fmt(v, d)}${Number.isFinite(er) && st.D.err !== 'none' ? ' ± ' + fmt(er, d) : ''}`).join('<br>'), e);
     });
     paper.addEventListener('mouseleave', () => { hideTip(); paper.querySelectorAll('.xhair').forEach(l => l.setAttribute('visibility', 'hidden')); });
   }
@@ -3247,13 +3448,13 @@ const App = (() => {
     const rd = dual() ? (V.rateRead || 'od') : 'od', key = 'rate:' + rd;
     const series = seriesFor(rd === 'fl' ? 'flrate' : 'rate');
     const what = rd === 'fl' ? 'ln(fluorescence)' : 'ln(OD)';
-    const C = Charts.timecourse({ series, t: st.R.t, W: D.w, H: D.h, xlab: D.xlab, ylab: (rd === 'fl' ? 'Specific rate of fluorescence increase (h⁻¹)' : 'Specific growth rate µ (h⁻¹)') + (D.err !== 'none' ? ' ' + Charts.ERR_LABEL[D.err] : ''),
+    const C = Charts.timecourse({ series, t: st.R.t, W: D.w, H: D.h, xlab: D.xlab, ylab: (rd === 'fl' ? 'Specific rate of fluorescence increase (h⁻¹)' : 'Specific growth rate µ (h⁻¹)') + errSuffix(),
       title: D.title, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg, legend: D.legend, lw: D.lw, ps: D.ps, points: D.points, showWells: D.wells,
       errKind: D.err, errStyle: D.errStyle, zero: false, zeroLine: true, zoom: st.V.zoom[key] });
     const thr = rd === 'fl' ? `lowest usable F (${fmt(st.R.fl.fMin, 0)})` : `lowest usable OD (${st.S.odMin})`;
     $('view').innerHTML = `<div class="card">${timeToolbar(`${dual() ? `<label class="fld"><span>Read</span><select id="rRead"><option value="od">OD</option><option value="fl">Fluorescence</option></select></label>` : ''}<p class="note" style="margin:0;max-width:62ch">Slope of ${what} in a sliding window of ${st.R && Object.values(st.R.wells).find(w => w.mf) ? Object.values(st.R.wells).find(w => w.mf).mf.window : '–'} readings (set by "µmax window"). Readings below the ${thr} are skipped. The peak of each trace is ${rd === 'fl' ? 'F µmax' : 'µmax'}.</p>${zoomBarHtml(key)}`)}${paperHtml(C.svg)}</div>`;
     if ($('rRead')) { $('rRead').value = rd; $('rRead').onchange = e => { V.rateRead = e.target.value; render(); }; }
-    bindLegend(); bindLineHover(lineSet(C, { d: 3, unit: 'h⁻¹' })); bindCrosshair(C, 'h⁻¹'); bindZoom(C, key);
+    bindLegend(); bindLineHover(lineSet(C, { d: 3, unit: 'h⁻¹' })); bindCrosshair(C, 3); bindZoom(C, key);
     st.lastSvg = C.svg; st.lastName = 'growth_rate'; st.lastTable = curveRows(series);
   }
 
@@ -3271,7 +3472,7 @@ const App = (() => {
   function viewPanels() {
     const D = st.D, V = st.V, cm = colorMap(), R = st.R;
     const rd = dual() ? (V.panelRead || 'both') : 'od';
-    const panels = chartGroups().filter(g => !g.hidden).map(g => {
+    const panels = chartGroups().filter(g => !isHidden(g)).map(g => {
       const gr = R.groups[g.id], mu = gr.metrics.mu, fmu = gr.metrics.fmu;
       const sub = !isSampleRole(g.role) ? ROLES[g.role].toLowerCase()
         : rd === 'fl' ? (fmu && Number.isFinite(fmu.mean) ? `F µ ${fmt(fmu.mean, 2)} h⁻¹` : '')
@@ -3303,7 +3504,7 @@ const App = (() => {
         ${Models.list.filter(m => st.S.models[m.id]).map(m => `<option value="${m.id}">${m.name} fit</option>`).join('')}
         <option value="tangent">µmax tangent (model-free)</option><option value="none">Data only</option></select></label>
       <label class="fld"><span>Y axis</span><select id="pLog"><option value="0">Linear</option><option value="1">Log scale</option></select></label>
-      <button class="btn small" id="chartSave" title="Save chosen panels, as one figure or one file per group">Save panels…</button>
+      <button class="btn small" id="chartSave" title="Save chosen panels, as one figure or one file per group">Save panels…</button>${showAllBtn()}
       <label class="fld"><span>Columns</span><select id="pCols"><option value="0">Auto</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
       <div class="grow"></div><span class="status">Points are readings, lines are fits. Click a point to exclude or include that well.</span></div>
       ${paperHtml(C.svg)}</div>`;
@@ -3335,15 +3536,18 @@ const App = (() => {
   }
 
   /* ---------- PARAMETERS (bars) ---------- */
-  function sampleGroupsWithData() { return st.groups.filter(g => isSampleRole(g.role) && st.R.groups[g.id] && st.R.groups[g.id].n && (!st.onlyIds || st.onlyIds.has(g.id))); }
+  const allSampleGroups = () => st.groups.filter(g => isSampleRole(g.role) && st.R.groups[g.id] && st.R.groups[g.id].n);
+  function sampleGroupsWithData() { return allSampleGroups().filter(g => !st.onlyIds || st.onlyIds.has(g.id)); }
+  /* Statistics always use every sample group, whether or not it is shown in a chart, so the
+     Holm-adjusted p-values are the same on every tab and in every exported figure.          */
   function compare(metric, mode, refId) {
-    const gs = sampleGroupsWithData().filter(g => !g.hidden);
+    const gs = allSampleGroups();
     const vals = g => st.R.groups[g.id].metrics[metric].values.filter(Number.isFinite);
     const rows = [];
     if (mode === 'all') {
       for (let i = 0; i < gs.length; i++) for (let j = i + 1; j < gs.length; j++) rows.push({ a: gs[i], b: gs[j], r: M.welch(vals(gs[i]), vals(gs[j])) });
     } else {
-      const ref = groupById(refId) || gs[0];
+      const ref = gs.find(g => g.id === refId) || gs[0];
       if (ref) for (const g of gs) if (g !== ref) rows.push({ a: ref, b: g, r: M.welch(vals(ref), vals(g)) });
     }
     const adj = M.holm(rows.map(x => x.r ? x.r.p : NaN));
@@ -3364,12 +3568,16 @@ const App = (() => {
   function viewBars() {
     if (!METRIC[st.V.barMetric]) st.V.barMetric = 'mu';
     const D = st.D, V = st.V, cm = colorMap(), R = st.R, mk = V.barMetric, md = METRIC[mk];
-    let gs = sampleGroupsWithData().filter(g => !g.hidden);
-    const ref = V.ref ? gs.find(g => g.id === V.ref) || null : null;
-    if (ref) gs = [ref, ...gs.filter(g => g !== ref)];          // the reference is always drawn first
-    const rel = ref ? (V.barRel || 'abs') : 'abs';
+    const ref = V.ref ? allSampleGroups().find(g => g.id === V.ref) || null : null;
+    let gs = sampleGroupsWithData().filter(g => !isHidden(g) && g !== ref);
+    // the reference is drawn first, even if hidden on screen (unless left out of a saved chart on purpose)
+    if (ref && (!st.onlyIds || st.onlyIds.has(ref.id))) gs = [ref, ...gs];
     const refMean = ref ? R.groups[ref.id].metrics[mk].mean : NaN;
-    const tf = v => rel === 'pct' ? v / refMean * 100 : rel === 'ratio' ? v / refMean : rel === 'diff' ? v - refMean : v;
+    // relative values need a usable reference value (not missing, not zero for % and fold)
+    const relOk = ref && Number.isFinite(refMean) && refMean !== 0;
+    const rel = ref ? (V.barRel || 'abs') : 'abs';
+    const relShown = rel === 'abs' || relOk || (rel === 'diff' && Number.isFinite(refMean)) ? rel : 'abs';
+    const tf = v => relShown === 'pct' ? v / refMean * 100 : relShown === 'ratio' ? v / refMean : relShown === 'diff' ? v - refMean : v;
     // significance only when both groups have replicate wells
     let stars = {}, testable = false;
     if (ref) {
@@ -3388,13 +3596,14 @@ const App = (() => {
       return { id: g.id, label: g.name, color: cm[g.id], mean: s.mean, err, isRef: g === ref, star: g === ref ? '' : stars[g.id] || '', gapBefore: gap,
         values: R.groups[g.id].wells.map((w, i) => ({ v: vals[i], raw: raw[i], well: w })), n: s.n };
     });
-    const unit = rel === 'abs' ? md.unit : rel === 'diff' ? md.unit : REL[rel].unit;
-    const ylab = md.label + (rel === 'abs' ? '' : rel === 'pct' ? ` (% of ${ref.name})` : rel === 'ratio' ? ` (fold vs ${ref.name})` : ` (difference from ${ref.name}${md.unit ? ', ' + md.unit : ''})`)
-      + (rel === 'abs' && md.unit ? ' (' + md.unit + ')' : '');
+    const r2 = relShown, unit = r2 === 'abs' ? md.unit : r2 === 'diff' ? md.unit : REL[r2].unit;
+    const ylab = md.label + (r2 === 'abs' ? '' : r2 === 'pct' ? ` (% of ${ref.name})` : r2 === 'ratio' ? ` (fold vs ${ref.name})` : ` (difference from ${ref.name}${md.unit ? ', ' + md.unit : ''})`)
+      + (r2 === 'abs' && md.unit ? ' (' + md.unit + ')' : '');
     const errNote = D.err !== 'none' && items.some(i => i.n > 1) ? 'bars: mean ' + Charts.ERR_LABEL[D.err] : '';
-    const note = ref ? (testable ? `Welch t-test vs ${ref.name}, Holm-adjusted` : `Reference: ${ref.name} · single wells, so no significance tests`) + (errNote ? ' · ' + errNote : '') : errNote;
+    const note = ref ? (testable ? `Welch t-test vs ${ref.name}, Holm-adjusted` : `Reference: ${ref.name} · too few replicate wells for significance tests`) + (errNote ? ' · ' + errNote : '') : errNote;
+    const relWarn = rel !== r2 ? `<div class="msg warn" style="margin:0 0 8px">${esc(ref.name)} has no usable ${esc(md.label)} value (${Number.isFinite(refMean) ? 'it is 0' : 'not determined'}), so values relative to it cannot be calculated. Absolute values are shown instead.</div>` : '';
     const C = Charts.bars({ items, W: D.w, H: D.h, type: V.barType, showPoints: V.barPoints, ylab, title: D.title, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg,
-      ps: Math.max(2, D.ps), note, ymin: rel === 'abs' ? D.ymin : null, ymax: rel === 'abs' ? D.ymax : null, refLine: rel !== 'abs' ? REL[rel].line : (ref ? refMean : NaN) });
+      ps: Math.max(2, D.ps), note, ymin: r2 === 'abs' ? D.ymin : null, ymax: r2 === 'abs' ? D.ymax : null, refLine: r2 !== 'abs' ? REL[r2].line : (ref ? refMean : NaN) });
     const src = st.S.source === 'mf' ? 'model-free' : st.S.source === 'best' ? 'best model per well' : Models.byId[st.S.source].name + ' fit';
     $('view').innerHTML = `<div class="card"><div class="toolbar">
       <label class="fld"><span>Parameter</span><select id="bMetric">${metricOptions(mk)}</select></label>
@@ -3402,9 +3611,9 @@ const App = (() => {
       <label class="fld"><span>Reference</span><select id="bRef">${refOptions(V.ref).replace('(no comparison)', '(none)')}</select></label>
       <label class="fld"><span>Show values as</span><select id="bRel" ${ref ? '' : 'disabled title="Choose a reference first"'}>${Object.entries(REL).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('')}</select></label>
       <label class="chk"><input type="checkbox" id="bPts" ${V.barPoints ? 'checked' : ''}> Replicate points</label>
-      <button class="btn small" id="chartSave" title="Save the chart for chosen groups">Save charts…</button>
-      <div class="grow"></div><span class="status">${esc(md.help)} · µ/lag from ${src}${ref ? ` · dashed line = ${rel === 'abs' ? 'reference value' : rel === 'pct' ? '100%' : rel === 'ratio' ? '1×' : 'no difference'}` : ''}</span></div>
-      ${paperHtml(C.svg)}</div>`;
+      <button class="btn small" id="chartSave" title="Save the chart for chosen groups">Save charts…</button>${showAllBtn(true)}
+      <div class="grow"></div><span class="status">${esc(md.help)} · µ/lag from ${src}${ref ? ` · dashed line = ${r2 === 'abs' ? 'reference value' : r2 === 'pct' ? '100%' : r2 === 'ratio' ? '1×' : 'no difference'}` : ''}</span></div>
+      ${relWarn}${paperHtml(C.svg)}</div>`;
     $('bType').value = V.barType; $('bRel').value = rel;
     $('bMetric').onchange = e => { V.barMetric = e.target.value; render(); };
     $('bType').onchange = e => { V.barType = e.target.value; render(); };
@@ -3413,10 +3622,10 @@ const App = (() => {
     $('bPts').onchange = e => { V.barPoints = e.target.checked; render(); };
     bindHits(C.hits, h => {
       const it = items.find(i => i.values.some(v => v.well === h.well)), v = it && it.values.find(x => x.well === h.well);
-      return `<b>${h.well}</b> · ${esc(h.group)}<br>${esc(md.label)}: ${fmt(v ? v.raw : h.v, md.d)} ${esc(md.unit)}` + (rel !== 'abs' ? `<br>${REL[rel].name}: ${fmt(h.v, rel === 'ratio' ? 3 : rel === 'pct' ? 1 : md.d)}${unit && rel !== 'diff' ? ' ' + unit : ''}` : '');
+      return `<b>${h.well}</b> · ${esc(h.group)}<br>${esc(md.label)}: ${fmt(v ? v.raw : h.v, md.d)} ${esc(md.unit)}` + (r2 !== 'abs' ? `<br>${REL[r2].name}: ${fmt(h.v, r2 === 'ratio' ? 3 : r2 === 'pct' ? 1 : md.d)}${unit && r2 !== 'diff' ? ' ' + unit : ''}` : '');
     });
-    st.lastSvg = C.svg; st.lastName = 'parameter_' + mk.replace(/[^a-z0-9]+/gi, '_') + (rel !== 'abs' ? '_' + rel : '');
-    const head = ['Group', 'n', rel === 'abs' ? `${md.label} mean` : `${md.label} ${REL[rel].name} mean`, 'SD', 'SEM', ...(ref ? ['p (Holm)', ''] : [])];
+    st.lastSvg = C.svg; st.lastName = 'parameter_' + mk.replace(/[^a-z0-9]+/gi, '_') + (r2 !== 'abs' ? '_' + r2 : '');
+    const head = ['Group', 'n', r2 === 'abs' ? `${md.label} mean` : `${md.label} ${REL[r2].name} mean`, 'SD', 'SEM', ...(ref ? ['p (Holm)', ''] : [])];
     const cmp = ref ? compare(mk, 'ref', ref.id).rows : [];
     st.lastTable = [head, ...items.map(it => { const s = Analysis.summarize(it.values.map(v => v.v)); const c = cmp.find(x => x.b.id === it.id);
       return [it.label + (it.isRef ? ' (reference)' : ''), s.n, s.mean, s.sd, s.sem, ...(ref ? [c ? c.padj : NaN, c ? M.stars(c.padj) : ''] : [])]; })];
@@ -3435,6 +3644,8 @@ const App = (() => {
       <label class="fld ${V.statMode === 'all' ? 'hidden' : ''}"><span>Reference group</span><select id="sRef">${sampleGroupsWithData().map(g => `<option value="${g.id}"${g.id === (V.ref || (gs[0] && gs[0].id)) ? ' selected' : ''}>${esc(g.name)}</option>`).join('')}</select></label>
       </div>`;
     h += `<h2>Summary of ${esc(md.label)} <small>${esc(md.unit)} · replicate wells, excluded wells left out</small></h2>`;
+    const nHid = gs.filter(g => g.hidden).length;
+    if (nHid) h += `<p class="note" style="margin:0 0 8px">${nHid} group${nHid > 1 ? 's are' : ' is'} hidden from the charts but still included here. To leave a group out of the statistics, exclude its wells on the Plate tab.</p>`;
     const sumRows = [['Group', 'n', 'Mean', 'SD', 'SEM', '95% CI ±', 'CV %', 'Min', 'Max']];
     for (const g of gs) {
       const s = st.R.groups[g.id].metrics[mk], f = M.fin(s.values);
@@ -3570,7 +3781,8 @@ const App = (() => {
       <label class="fld"><span>Values</span><select id="rKind"><option value="raw">Raw OD as read</option><option value="corr">Blank-corrected (analysis window)</option>${dual() ? '<option value="fraw">Raw fluorescence</option><option value="fcorr">Corrected fluorescence</option><option value="fod">F/OD</option>' : ''}</select></label>
       <div class="grow"></div><span class="status">${esc(b.sheet)} · ${esc(b.label)} · ${b.layout === 'rows' ? 'wells in rows' : b.layout === 'plain' ? 'plain table' : 'wells in columns'} · time unit ${esc(b.timeUnit)}</span></div>
       <div class="tbl-wrap"><table><thead><tr>${rows[0].map(c => `<th class="num">${esc(c)}</th>`).join('')}</tr></thead><tbody>`;
-    for (const r of rows.slice(1)) h += '<tr>' + r.map((v, i) => `<td class="num">${i === 0 ? fmt(v, 3) : fmt(v, 3)}</td>`).join('') + '</tr>';
+    const dv = /^f/.test(V.rawKind) ? 0 : 3; // fluorescence in whole RFU
+    for (const r of rows.slice(1)) h += '<tr>' + r.map((v, i) => `<td class="num">${fmt(v, i === 0 || (i === 1 && rows[0][1] === 'Temp (°C)') ? (i === 0 ? 3 : 1) : dv)}</td>`).join('') + '</tr>';
     h += '</tbody></table></div></div>';
     $('view').innerHTML = h;
     $('rKind').value = V.rawKind;
@@ -3604,17 +3816,25 @@ const App = (() => {
     const measure = wl ? `optical density at ${wl} nm (OD${wl})` : `${lbl.toLowerCase().includes('od') ? lbl : 'optical density'} ⟦wavelength⟧`;
     const t = R.t, dts = t.slice(1).map((x, i) => x - t[i]), dt = M.median(dts) * 60;
     const temps = M.fin(b.temps || []);
-    const tempTxt = temps.length ? `${n2(M.mean(temps)).toFixed(1)} °C` : '⟦temperature⟧ °C';
+    // the set temperature when the reader wrote it down, otherwise the mean of the recorded temperatures
+    const tempTxt = b.meta && Number.isFinite(b.meta.tempSet) ? `${b.meta.tempSet} °C` : temps.length ? `${n2(M.mean(temps)).toFixed(1)} °C` : '⟦temperature⟧ °C';
     const excl = [...st.excluded].filter(w => st.used.has(w));
     const out = [];
 
     const meta = b.meta || {}, fb = dual() ? flBlock() : null, fm = fb ? (fb.meta || {}) : {};
     const plateTxt = meta.plate ? `(${meta.plate}) ⟦culture volume per well⟧` : '⟦plate type, culture volume per well⟧';
-    const readerTxt = meta.device ? `a ${meta.device} plate reader ⟦manufacturer⟧` : 'a ⟦plate reader make and model⟧';
+    const MAKERS = [[/spark|infinite|sunrise|safire/i, 'Tecan'], [/synergy|epoch|cytation/i, 'BioTek'], [/clariostar|fluostar|polarstar|spectrostar/i, 'BMG Labtech'],
+      [/spectramax/i, 'Molecular Devices'], [/varioskan|multiskan/i, 'Thermo Fisher Scientific']];
+    const maker = meta.device ? (MAKERS.find(([re]) => re.test(meta.device)) || [])[1] : null;
+    const readerTxt = meta.device ? `a ${meta.device} plate reader ${maker ? `(${maker})` : '⟦manufacturer⟧'}` : 'a ⟦plate reader make and model⟧';
+    const sk = meta.shake;
+    const shakeTxt = sk && (sk.duration || sk.frequency)
+      ? `with ${sk.mode} shaking (${[sk.amplitude ? `amplitude ${sk.amplitude} mm` : '', sk.frequency ? `${sk.frequency} rpm` : ''].filter(Boolean).join(', ')})${sk.duration ? ` for ${sk.duration} s of every ${Math.round(dt)}-min cycle` : ''}`
+      : '⟦with continuous / intermittent shaking⟧';
     const flTxt = fb ? ` ${fb.label} fluorescence was read ${/bottom/i.test(fm.mode || '') ? 'from the bottom' : /top/i.test(fm.mode || '') ? 'from the top' : ''} at the same time points`
       + (fm.ex || fm.em ? ` (excitation ${fm.ex || '⟦…⟧'} nm, emission ${fm.em || '⟦…⟧'} nm${fm.gain ? ', gain ' + fm.gain : ''})` : ' ⟦excitation / emission wavelengths, gain⟧') + '.' : '';
     out.push({ h: 'Growth measurements', p: [
-      `Bacterial growth was monitored in ${st.fmt.n}-well plates ${plateTxt} in ${readerTxt} at ${tempTxt} ⟦with continuous / intermittent shaking⟧. `
+      `Bacterial growth was monitored in ${st.fmt.n}-well plates ${plateTxt} in ${readerTxt} at ${tempTxt} ${shakeTxt}. `
       + `${measure.charAt(0).toUpperCase() + measure.slice(1)} was read every ${Math.round(dt)} min for ${n2(t[t.length - 1] - t[0])} h (${t.length} readings).${flTxt} `
       + `⟦Strains and media⟧ were inoculated at ⟦starting OD or dilution⟧. ` + (repTxt === '1' ? 'Each strain was measured in a single well' : `Each condition was measured in ${repTxt} replicate wells`)
       + (blanks.length ? `, and medium without cells was included as a blank${blanks.length > 1 ? ' for each medium' : ''}` : '')
@@ -3878,14 +4098,27 @@ const App = (() => {
     Export.download(new Blob([JSON.stringify(proj)], { type: 'application/json' }), baseName() + '.sigmoid.json');
   }
   function restoreProject(p, name) {
-    if (p.app !== 'Sigmoid' && p.app !== 'GrowthScope') { message('This .json file is not a Sigmoid project.', 'err'); return; }
-    st.fileName = p.fileName || name; st.blocks = p.blocks.map((b, i) => Object.assign(b, { id: i })); st.sheetsCache = null;
-    st.groups = p.groups; Layout.resetIds(st.groups); st.excluded = new Set(p.excluded || []); st.flIdx = p.flIdx ?? null;
-    st.S = Object.assign(clone(DEFAULT_SETTINGS), p.S); st.D = Object.assign(clone(DEFAULT_DISPLAY), p.D); Object.assign(st.V, p.V || {});
+    if (!p || (p.app !== 'Sigmoid' && p.app !== 'GrowthScope')) { message('This .json file is not a Sigmoid project.', 'err'); return; }
+    const okBlock = b => b && Array.isArray(b.times) && b.wells && typeof b.wells === 'object';
+    if (!Array.isArray(p.blocks) || !p.blocks.length || !p.blocks.every(okBlock)) { message('This project file contains no plate data.', 'err'); return; }
+    // JSON has no NaN: missing readings were saved as null and must become "missing" again, not 0
+    const num = a => Array.isArray(a) ? a.map(v => typeof v === 'number' ? v : NaN) : [];
+    st.fileName = p.fileName || name; st.sheetsCache = null;
+    st.blocks = p.blocks.map((b, i) => Object.assign({}, b, { id: i, times: num(b.times), temps: Array.isArray(b.temps) ? num(b.temps) : b.times.map(() => NaN),
+      wells: Object.fromEntries(Object.entries(b.wells).map(([w, v]) => [w, num(v)])),
+      listedWells: Array.isArray(b.listedWells) ? b.listedWells : Object.keys(b.wells), overflow: b.overflow || 0 }));
+    st.groups = (Array.isArray(p.groups) ? p.groups : []).filter(g => g && Array.isArray(g.wells))
+      .map(g => Object.assign({ role: 'sample', blank: null, color: null, hidden: false }, g));
+    Layout.resetIds(st.groups);
+    st.excluded = new Set(p.excluded || []); st.sel.clear();
+    const bi = Math.min(Math.max(0, p.blockIdx | 0), st.blocks.length - 1);
+    st.flIdx = Number.isInteger(p.flIdx) && st.blocks[p.flIdx] && p.flIdx !== bi ? p.flIdx : null;
+    st.S = Object.assign(clone(DEFAULT_SETTINGS), p.S); st.S.models = Object.assign(clone(DEFAULT_SETTINGS.models), (p.S || {}).models);
+    st.D = Object.assign(clone(DEFAULT_DISPLAY), p.D); Object.assign(st.V, p.V || {});
     st.cache.clear(); writeInputs();
     message(`Project restored: ${esc(st.fileName)} with ${st.groups.length} groups.`);
-    setBlock(p.blockIdx || 0, false);
-    st.initial = JSON.stringify({ g: st.groups, D: st.D });
+    setBlock(bi, false);
+    st.initial = JSON.stringify({ g: st.groups, D: st.D, b: st.blockIdx, fl: st.flIdx, unit: st.S.timeUnit });
   }
 
   /* ---------- demo plate (simulated) ---------- */
@@ -3911,6 +4144,7 @@ const App = (() => {
     }
     const b = { label: 'OD600 (simulated demo)', sheet: 'Demo', layout: 'columns', timeUnit: 'h', times, temps: times.map(() => 30), wells, listedWells: listed, overflow: 0, id: 0 };
     st.fileName = 'Simulated demo plate'; st.blocks = [b]; st.flIdx = null; st.sheetsCache = null; st.excluded = new Set(); st.sel.clear(); st.cache.clear();
+    st.R = null; st.autoInfo = null; Object.assign(st.V, { ref: '', sortKey: null });
     const byName = {}; for (const w in names) (byName[names[w]] = byName[names[w]] || []).push(w);
     st.groups = Object.entries(byName).map(([n, ws]) => Layout.newGroup(n, ws, /blank/i.test(n) ? 'blank' : 'sample'));
     Layout.assignBlanks(st.groups);
@@ -3918,7 +4152,7 @@ const App = (() => {
     writeInputs();
     st.D.ylab = 'OD600 (blank-corrected)';
     setBlock(0, false);
-    st.initial = JSON.stringify({ g: st.groups, D: st.D });
+    st.initial = JSON.stringify({ g: st.groups, D: st.D, b: 0, fl: null, unit: st.S.timeUnit });
     message('Loaded a <b>simulated</b> 96-well plate: 7 strains × 4 antibiotic concentrations in triplicate, medium blanks in row H. Load your own file any time.', 'warn');
   }
 
@@ -3926,7 +4160,8 @@ const App = (() => {
   function bindDrop(el) {
     el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('over'); });
     el.addEventListener('dragleave', () => el.classList.remove('over'));
-    el.addEventListener('drop', e => { e.preventDefault(); el.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+    // stopPropagation: the page itself also accepts dropped files, and the file must be read only once
+    el.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); el.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
   }
   function init() {
     try { const th = localStorage.getItem('gs-theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) { }
