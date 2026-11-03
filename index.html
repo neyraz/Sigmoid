@@ -73,6 +73,22 @@ code { font-size: .92em; background: var(--panel-2); padding: 0 .3em; border-rad
 .zoombar .btn { border-radius: 0; margin-left: -1px; min-width: 32px; justify-content: center; }
 .zoombar .btn:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
 .zoombar .btn:last-child { border-radius: 0 6px 6px 0; }
+.sessbar { flex: 0 0 calc(100% + 32px); max-width: calc(100% + 32px); display: flex; align-items: flex-end; gap: 4px; overflow-x: auto; margin: 0 -16px -10px; padding: 4px 16px 0; border-top: 1px solid var(--line); background: var(--panel-2); scrollbar-width: thin; }
+.sesstab { display: flex; align-items: center; border: 1px solid var(--line); border-bottom: 0; border-radius: 7px 7px 0 0; background: var(--panel-2); max-width: 260px; flex: none; }
+.sesstab.on { background: var(--bg); border-color: var(--accent); box-shadow: inset 0 2px 0 var(--accent); }
+.sesstab .sname { border: 0; background: none; padding: 5px 4px 5px 11px; cursor: pointer; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.sesstab.on .sname { color: var(--fg); font-weight: 700; }
+.sesstab .sclose { border: 0; background: none; cursor: pointer; color: var(--muted); padding: 2px 8px 2px 4px; font-size: 14px; line-height: 1; border-radius: 4px; }
+.sesstab .sclose:hover { color: var(--pink); }
+.sesstab .sclose.armed { color: #fff; background: var(--pink); font-size: 11.5px; padding: 3px 7px; margin-right: 4px; }
+.sessnew { border: 1px dashed var(--line); border-bottom: 0; background: none; border-radius: 7px 7px 0 0; padding: 5px 10px; font-size: 12px; color: var(--accent); cursor: pointer; flex: none; }
+.sessnew:hover { border-color: var(--accent); background: var(--accent-soft); }
+.topprog { position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; pointer-events: none; }
+.topprog i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+.runpill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 10px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.runpill b { font-family: var(--f-mono); }
+.spin { width: 11px; height: 11px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .zoomrect { fill: rgba(90, 63, 166, .12); stroke: #5a3fa6; stroke-dasharray: 4 3; }
 .methods { max-width: 82ch; display: grid; gap: 12px; }
 .methods h3 { margin: 8px 0 0; font-size: 14px; }
@@ -151,6 +167,9 @@ details.sec > summary .tag { margin-left: auto; font: 11px var(--f-mono); color:
 .paper svg.hl [data-sid] { opacity: .14; transition: opacity .08s; }
 .paper svg.hl [data-sid].on { opacity: 1; }
 .paper svg.hl path.ln.on { stroke-width: 3.5px; }
+.paper [data-axis] { cursor: text; }
+.paper [data-axis]:hover { fill: var(--accent); }
+details.stylebox > summary { cursor: pointer; font-size: 12.5px; color: var(--muted); margin: -2px 0 6px; }
 .status { font: 12px var(--f-mono); color: var(--muted); }
 .progress { height: 3px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
 .progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
@@ -237,11 +256,12 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
 </head><body>
 
 <header class="topbar">
-  <button class="brand" id="brandHome" title="Start over: clears the loaded data and resets everything (Undo brings it back)">
+  <button class="brand" id="brandHome" title="Start over in this tab: clears its data and settings (Undo brings it back)">
     <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10" fill="#5a3fa6"/><path d="M7 31.5H33" stroke="#fff" stroke-opacity=".35" stroke-width="1.4" stroke-linecap="round"/><path d="M7 29.5C14 29.5 15.5 28.5 18 22.5S22.5 10.5 33 10.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="9" cy="29.3" r="2.1" fill="#f48fb1"/><circle cx="16.6" cy="25.6" r="2.1" fill="#f48fb1"/><circle cx="20" cy="17.2" r="2.1" fill="#f48fb1"/><circle cx="25.5" cy="12" r="2.1" fill="#f48fb1"/><circle cx="31.5" cy="10.6" r="2.1" fill="#f48fb1"/></svg>
-    <span class="names"><h1>Sigmoid <span class="ver">v1.6</span></h1><span class="tagline">Bacterial Growth Analysis</span></span>
+    <span class="names"><h1>Sigmoid <span class="ver">v1.8</span></h1><span class="tagline">Bacterial Growth Analysis</span></span>
   </button>
   <div class="filechip" id="fileChip">no data loaded</div>
+  <span class="runpill hidden" id="runPill" role="status" aria-live="polite"><span class="spin" aria-hidden="true"></span>Fitting curves… <b id="runPct">0%</b></span>
   <div class="spacer"></div>
   <div class="actions">
     <div class="histbtns">
@@ -270,6 +290,8 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
     <button class="btn ghost" id="btnTheme" title="Switch light / dark" aria-label="Switch light or dark theme"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg></button>
   </div>
   <input type="file" id="fileInput" accept=".xlsx,.xlsm,.csv,.tsv,.txt,.json" hidden>
+  <nav class="sessbar" id="sessBar" aria-label="Analysis tabs"></nav>
+  <div class="topprog" aria-hidden="true"><i id="prog2"></i></div>
 </header>
 
 <div class="bench">
@@ -380,6 +402,8 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
         <label class="chk"><input type="checkbox" id="d_points" checked> Show data points</label>
         <label class="chk"><input type="checkbox" id="d_blanks"> Include control groups (blanks, no-dye) in charts</label>
         <label class="chk"><input type="checkbox" id="d_legend" checked> Legend</label>
+        <div class="row2"><label class="fld"><span>Legend position</span><select id="d_legendPos"><option value="below">Below the chart</option><option value="right">Right of the chart</option></select></label>
+          <label class="chk" style="align-self:end"><input type="checkbox" id="d_showN"> n = in names</label></div>
         <div class="row2">
           <label class="fld"><span>Line width</span><input type="number" id="d_lw" step="0.25" min="0.5" max="6"></label>
           <label class="fld"><span>Point size</span><input type="number" id="d_ps" step="0.5" min="0" max="8"></label>
@@ -389,6 +413,13 @@ tr.isexcl td { opacity: .45; text-decoration: line-through; }
           <label class="fld"><span>Tick pt</span><input type="number" id="d_fsTick" min="6" max="28"></label>
           <label class="fld"><span>Legend pt</span><input type="number" id="d_fsLeg" min="6" max="28"></label>
         </div>
+        <div class="row3">
+          <label class="fld"><span>Title pt</span><input type="number" id="d_fsTitle" min="8" max="36"></label>
+          <label class="chk" style="grid-column:span 2"><input type="checkbox" id="d_boldAxis"> Axis titles bold</label>
+        </div>
+        <label class="chk"><input type="checkbox" id="d_boldTick"> Tick labels bold</label>
+        <div class="row2"><label class="chk"><input type="checkbox" id="d_minorX"> Minor ticks, X</label><label class="chk"><input type="checkbox" id="d_minorY"> Minor ticks, Y</label></div>
+        <p class="note" style="margin:0">Click an axis title on any chart (or "Axis titles…") to retype it for that chart.</p>
         <div class="row2">
           <label class="fld"><span>Width (px)</span><input type="number" id="d_w" step="50" min="400" max="2400"></label>
           <label class="fld"><span>Height (px)</span><input type="number" id="d_h" step="50" min="250" max="2000"></label>
@@ -1343,6 +1374,9 @@ function setMetrics(dual, S) {
 }
 
 const Analysis = (() => {
+  // Let the page redraw (progress bar) between wells. A message, unlike setTimeout, is not slowed
+  // down by the browser when the tab is in the background, so analysis runs at full speed there too.
+  const yieldNow = () => new Promise(res => { if (typeof MessageChannel === 'undefined') return setTimeout(res, 0); const ch = new MessageChannel(); ch.port1.onmessage = () => { ch.port1.close(); res(); }; ch.port2.postMessage(0); });
 
   function crossTime(t, y, level) {
     for (let i = 0; i < y.length; i++) {
@@ -1526,7 +1560,7 @@ const Analysis = (() => {
         if (ckey) cache.set(ckey, { mf: res.mf, growth: res.growth, muT: res.muT, fitEnd: res.fitEnd, fits: res.fits, best: res.best, flags: res.flags.slice() });
       }
       wells[w] = res;
-      if (++done % 4 === 0) { onProgress && onProgress(done / list.length); await new Promise(r => setTimeout(r, 0)); }
+      if (++done % 4 === 0) { onProgress && onProgress(done / list.length); await yieldNow(); }
     }
     onProgress && onProgress(1);
     const R = { t, idx, wells, groups: {}, blockId: block.id };
@@ -1953,6 +1987,21 @@ const Colors = (() => {
     return mix(stops[i], stops[i + 1], p - i);
   }
   const viridis = t => ramp(VIR, t);
+  // colour scales for the plate heat map (low value → high value)
+  const HEAT = {
+    viridis: { name: 'Viridis (purple → yellow)', stops: VIR },
+    magma: { name: 'Magma (black → yellow)', stops: ['#000004', '#2c115f', '#721f81', '#b73779', '#f1605d', '#feb078', '#fcfdbf'] },
+    bwr: { name: 'Blue → white → red', stops: ['#2166ac', '#67a9cf', '#d1e5f0', '#f7f7f7', '#fddbc7', '#ef8a62', '#b2182b'] },
+    gwr: { name: 'Green → white → red', stops: ['#1b7837', '#7fbf7b', '#d9f0d3', '#f7f7f7', '#fddbc7', '#ef8a62', '#b2182b'] },
+    byr: { name: 'Blue → yellow → red', stops: ['#313695', '#74add1', '#e0f3f8', '#ffffbf', '#fee090', '#f46d43', '#a50026'] },
+    wr: { name: 'White → red', stops: ['#fff5f0', '#fcbba1', '#fb6a4a', '#cb181d', '#67000d'] },
+    wb: { name: 'White → blue', stops: ['#f7fbff', '#c6dbef', '#6baed6', '#2171b5', '#08306b'] },
+    wg: { name: 'White → green', stops: ['#f7fcf5', '#c7e9c0', '#74c476', '#238b45', '#00441b'] },
+    grey: { name: 'White → black', stops: ['#ffffff', '#bdbdbd', '#737373', '#252525'] },
+  };
+  const heat = (name, rev) => { const st = (HEAT[name] || HEAT.viridis).stops; return t => ramp(st, rev ? 1 - t : t); };
+  // dark or light text, whichever reads better on this background
+  const ink = bg => { const [r, g, b] = hexToRgb(bg); return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#1d1a2b' : '#ffffff'; };
   // shade i of n around a base colour: darker → lighter
   function shade(base, i, n) {
     if (n <= 1) return base;
@@ -1976,7 +2025,7 @@ const Colors = (() => {
     for (const g of groups) if (g.color) out[g.id] = g.color;
     return out;
   }
-  return { assign, shade, mix, viridis, familyKey, DISTINCT };
+  return { assign, shade, mix, viridis, heat, HEAT, ink, familyKey, DISTINCT };
 })();
 
 const Charts = (() => {
@@ -2010,17 +2059,43 @@ const Charts = (() => {
   const tickLabel = v => { const a = Math.abs(v); if (a === 0) return '0'; if (a >= 1e6 || a < 1e-3) return v.toExponential(0); return String(+v.toPrecision(6)); };
   const textW = (s, fs) => String(s).length * fs * 0.56;
 
+  /* minor ticks between the labelled ones: 5 per step (4 when the step starts with 2); 2…9 on a log axis */
+  function minorTicks(major, dom, log) {
+    const lo = Math.min(dom[0], dom[1]), hi = Math.max(dom[0], dom[1]), out = [];
+    if (log) {
+      for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) for (let k = 2; k <= 9; k++) { const v = k * 10 ** e; if (v > lo && v < hi && !major.some(M => Math.abs(M - v) < v * 1e-9)) out.push(v); }
+      return out;
+    }
+    if (major.length < 2) return out;
+    const step = major[1] - major[0], lead = +(step / 10 ** Math.floor(Math.log10(step))).toFixed(6), sub = step / (lead === 2 ? 4 : 5);
+    for (let v = Math.ceil(lo / sub - 1e-9) * sub; v <= hi + sub * 1e-9; v += sub) {
+      const r = +v.toPrecision(12);
+      if (!major.some(M => Math.abs(M - r) < sub * 1e-6)) out.push(r);
+    }
+    return out;
+  }
+
   /* Builds axes; returns helpers + svg string parts */
   function frame(o) {
     const W = o.W, H = o.H;
     const fsT = o.fsTick, fsA = o.fsAxis;
+    const aw = o.boldAxis ? ' font-weight="bold"' : '', tw = o.boldTick ? ' font-weight="bold"' : '';
     const yt = o.ylog ? logTicks(o.y[0], o.y[1]) : niceTicks(o.y[0], o.y[1], o.yCount || 6);
     const yLabW = Math.max(...yt.map(v => textW(tickLabel(v), fsT)), 10);
     const mt = o.title ? fsA * 2.2 + 6 : 14, mb = (o.xLabelsRot ? o.xLabelsRot : fsT + 8) + fsA * 1.6 + 12;
     // legend: as many columns as needed (up to 45% of the width); what still does not fit becomes "+ n more"
     const lh = (o.fsLeg || 12) * 1.45;
-    let legendW = 0, legCols = 1, perCol = 1, colW = 0, legShown = 0;
-    if (o.legend && o.legend.length) {
+    let legendW = 0, legCols = 1, perCol = 1, colW = 0, legShown = 0, legendH = 0;
+    const below = o.legendPos === 'below';
+    if (o.legend && o.legend.length && below) {
+      // below the chart: columns across the width, as many rows as needed (the picture grows taller)
+      const n = o.legend.length, natural = Math.max(...o.legend.map(l => textW(l.label, o.fsLeg))) + 34;
+      colW = Math.max(textW('M'.repeat(5), o.fsLeg) + 34, Math.min(natural, (W - 28) / 2));
+      legCols = Math.max(1, Math.floor((W - 28) / colW));
+      const rows = Math.min(Math.ceil(n / legCols), 60);
+      perCol = rows; legShown = Math.min(n, rows * legCols);
+      legendH = rows * lh + 10;
+    } else if (o.legend && o.legend.length) {
       const n = o.legend.length, natural = Math.max(...o.legend.map(l => textW(l.label, o.fsLeg))) + 34;
       perCol = Math.max(1, Math.floor((H - mt - mb - 4) / lh));
       if (n <= perCol) colW = Math.min(W * 0.35, natural);
@@ -2032,6 +2107,7 @@ const Charts = (() => {
       legendW = legCols * colW;
       legShown = Math.min(n, legCols * perCol);
     }
+    const legLeft = below ? Math.max(14, (W - legCols * colW) / 2) : 0;
     const m = { l: Math.max(yLabW + fsA * 1.6 + 14, o.leftMargin || 0), r: 14 + legendW + (o.extraRight || 0), t: mt, b: mb };
     const pw = W - m.l - m.r, ph = H - m.t - m.b;
     const x = o.xBand ? null : v => m.l + (v - o.x[0]) / (o.x[1] - o.x[0]) * pw;
@@ -2043,28 +2119,36 @@ const Charts = (() => {
     for (const v of yt) {
       const yy = y(v);
       s += `<line x1="${m.l}" x2="${m.l + pw}" y1="${yy}" y2="${yy}" stroke="#e6e4ee" stroke-width="1"/>`;
-      s += `<text x="${m.l - 7}" y="${yy}" font-size="${fsT}" text-anchor="end" dominant-baseline="middle" fill="#333">${tickLabel(v)}</text>`;
+      s += `<text x="${m.l - 7}" y="${yy}" font-size="${fsT}"${tw} text-anchor="end" dominant-baseline="middle" fill="#333">${tickLabel(v)}</text>`;
+    }
+    if (o.minorY) {
+      s += minorTicks(yt, o.y, o.ylog).map(v => `<line x1="${m.l - 3}" x2="${m.l}" y1="${y(v)}" y2="${y(v)}" stroke="#333" stroke-width=".8"/>`).join('');
+      s += yt.map(v => `<line x1="${m.l - 5}" x2="${m.l}" y1="${y(v)}" y2="${y(v)}" stroke="#333"/>`).join('');
     }
     if (!o.xBand) {
       const xt = niceTicks(o.x[0], o.x[1], o.xCount || Math.max(4, Math.min(10, Math.round(pw / 70))));
+      if (o.minorX) s += minorTicks(xt, o.x, false).map(v => `<line x1="${x(v)}" x2="${x(v)}" y1="${m.t + ph}" y2="${m.t + ph + 3}" stroke="#333" stroke-width=".8"/>`).join('');
       for (const v of xt) {
         if (v < o.x[0] - 1e-9 || v > o.x[1] + 1e-9) continue;
         const xx = x(v);
         s += `<line x1="${xx}" x2="${xx}" y1="${m.t + ph}" y2="${m.t + ph + 5}" stroke="#333"/>`;
-        s += `<text x="${xx}" y="${m.t + ph + 7 + fsT * 0.8}" font-size="${fsT}" text-anchor="middle" fill="#333">${tickLabel(v)}</text>`;
+        s += `<text x="${xx}" y="${m.t + ph + 7 + fsT * 0.8}" font-size="${fsT}"${tw} text-anchor="middle" fill="#333">${tickLabel(v)}</text>`;
       }
     }
     s += `<line x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${m.t + ph}" stroke="#333" stroke-width="1.2"/>`;
     s += `<line x1="${m.l}" x2="${m.l + pw}" y1="${m.t + ph}" y2="${m.t + ph}" stroke="#333" stroke-width="1.2"/>`;
-    if (o.xlab) s += `<text x="${m.l + pw / 2}" y="${H - 8}" font-size="${fsA}" text-anchor="middle" fill="#111">${esc(o.xlab)}</text>`;
-    if (o.ylab) s += `<text transform="translate(${fsA + 2},${m.t + ph / 2}) rotate(-90)" font-size="${fsA}" text-anchor="middle" fill="#111">${esc(o.ylab)}</text>`;
-    if (o.title) s += `<text x="${m.l + pw / 2}" y="${fsA * 1.5}" font-size="${fsA * 1.15}" font-weight="bold" text-anchor="middle" fill="#111">${esc(o.title)}</text>`;
+    if (o.xlab) s += `<text data-axis="x" x="${m.l + pw / 2}" y="${H - 8}" font-size="${fsA}"${aw} text-anchor="middle" fill="#111">${esc(o.xlab)}</text>`;
+    if (o.ylab) s += `<text data-axis="y" transform="translate(${fsA + 2},${m.t + ph / 2}) rotate(-90)" font-size="${fsA}"${aw} text-anchor="middle" fill="#111">${esc(o.ylab)}</text>`;
+    if (o.title) s += `<text data-axis="title" x="${m.l + pw / 2}" y="${fsA * 1.5}" font-size="${o.fsTitle || fsA * 1.15}" font-weight="bold" text-anchor="middle" fill="#111">${esc(o.title)}</text>`;
     let leg = '';
-    if (legendW) {
+    if (legShown) {
       const n = o.legend.length, more = n > legShown ? n - legShown + 1 : 0; // the last slot then says "+ n more"
       const maxCh = Math.max(4, Math.floor((colW - 30) / (o.fsLeg * 0.56)));
       for (let k = 0; k < legShown; k++) {
-        const l = o.legend[k], x0 = W - legendW + Math.floor(k / perCol) * colW, ly = m.t + 4 + (k % perCol) * lh;
+        // right: fill each column top to bottom; below: fill each row left to right
+        const l = o.legend[k];
+        const x0 = below ? legLeft + (k % legCols) * colW : W - legendW + Math.floor(k / perCol) * colW;
+        const ly = below ? H + 6 + lh / 2 + Math.floor(k / legCols) * lh : m.t + 4 + (k % perCol) * lh;
         if (more && k === legShown - 1) { leg += `<text x="${x0 + 6}" y="${ly}" font-size="${o.fsLeg}" font-style="italic" dominant-baseline="middle" fill="#555">+ ${more} more</text>`; break; }
         const lab = l.label.length > maxCh ? l.label.slice(0, maxCh - 1) + '…' : l.label;
         leg += `<g ${l.id ? `data-leg="${esc(l.id)}" style="cursor:pointer"` : ''} opacity="${l.off ? 0.3 : 1}">`
@@ -2075,7 +2159,7 @@ const Charts = (() => {
       }
     }
     const clip = 'c' + Math.random().toString(36).slice(2, 8);
-    return { m, pw, ph, x, y, axes: s, legend: leg, clip,
+    return { m, pw, ph, x, y, axes: s, legend: leg, clip, legendH,
       clipDef: `<clipPath id="${clip}"><rect x="${m.l}" y="${m.t - 2}" width="${pw}" height="${ph + 4}"/></clipPath>` };
   }
 
@@ -2084,18 +2168,20 @@ const Charts = (() => {
     const t = niceTicks(dom[0], dom[1], 6);
     return Math.max(...t.map(v => textW(tickLabel(v), fsT)), 10) + 14 + (withLabel ? fsA * 1.6 : 0);
   }
-  function rightAxis(F, dom, fsT, fsA, label) {
+  function rightAxis(F, dom, fsT, fsA, label, bold = {}) {
+    const aw = bold.axis ? ' font-weight="bold"' : '', tw = bold.tick ? ' font-weight="bold"' : '';
     const ticks = niceTicks(dom[0], dom[1], 6);
     const y2 = v => F.m.t + F.ph - (v - dom[0]) / (dom[1] - dom[0]) * F.ph;
     const xr = F.m.l + F.pw;
     let s = `<line x1="${xr}" x2="${xr}" y1="${F.m.t}" y2="${F.m.t + F.ph}" stroke="#333" stroke-width="1.2"/>`;
+    if (bold.minor) for (const v of minorTicks(ticks, dom, false)) s += `<line x1="${xr}" x2="${xr + 3}" y1="${y2(v)}" y2="${y2(v)}" stroke="#333" stroke-width=".8"/>`;
     for (const v of ticks) {
       if (v < dom[0] - 1e-9 || v > dom[1] + 1e-9) continue;
       const yy = y2(v);
-      s += `<line x1="${xr}" x2="${xr + 5}" y1="${yy}" y2="${yy}" stroke="#333"/><text x="${xr + 7}" y="${yy}" font-size="${fsT}" dominant-baseline="middle" fill="#333">${tickLabel(v)}</text>`;
+      s += `<line x1="${xr}" x2="${xr + 5}" y1="${yy}" y2="${yy}" stroke="#333"/><text x="${xr + 7}" y="${yy}" font-size="${fsT}"${tw} dominant-baseline="middle" fill="#333">${tickLabel(v)}</text>`;
     }
     const w = Math.max(...ticks.map(v => textW(tickLabel(v), fsT)), 10);
-    if (label) s += `<text transform="translate(${xr + w + 12 + fsA * 0.75},${F.m.t + F.ph / 2}) rotate(90)" font-size="${fsA}" text-anchor="middle" fill="#111">${esc(label)}</text>`;
+    if (label) s += `<text data-axis="y2" transform="translate(${xr + w + 12 + fsA * 0.75},${F.m.t + F.ph / 2}) rotate(90)" font-size="${fsA}"${aw} text-anchor="middle" fill="#111">${esc(label)}</text>`;
     return { s, y2 };
   }
   /* put several finished charts under each other in one SVG */
@@ -2175,7 +2261,7 @@ const Charts = (() => {
     }
     let legend = o.legend ? o.series.map(s => ({ id: s.id, label: s.label, color: s.color, off: s.off, marker: o.points })) : null;
     if (legend && o.legendExtra) legend = [...o.legendExtra, ...legend];
-    const F = frame({ W: o.W, H: o.H, x: xDomZ, y: yDomZ, ylog: o.ylog, xlab: o.xlab, ylab: o.ylab, title: o.title,
+    const F = frame({ boldAxis: o.boldAxis, boldTick: o.boldTick, fsTitle: o.fsTitle, minorX: o.minorX, minorY: o.minorY, legendPos: o.legendPos, W: o.W, H: o.H, x: xDomZ, y: yDomZ, ylog: o.ylog, xlab: o.xlab, ylab: o.ylab, title: o.title,
       fsAxis: o.fsAxis, fsTick: o.fsTick, fsLeg: o.fsLeg, legend, extraRight, leftMargin: o.leftMargin });
     const X = F.x, Y = F.y;
     let body = `<defs>${F.clipDef}</defs>` + F.axes;
@@ -2210,7 +2296,7 @@ const Charts = (() => {
     }
     let Y2 = null;
     if (y2Dom) {
-      const ra = rightAxis(F, y2Dom, o.fsTick, o.fsAxis, o.y2lab);
+      const ra = rightAxis(F, y2Dom, o.fsTick, o.fsAxis, o.y2lab, { axis: o.boldAxis, tick: o.boldTick, minor: o.minorY });
       body += ra.s; Y2 = ra.y2;
       for (const s of vis2) {
         if (o.errStyle === 'band' && o.errKind !== 'none')
@@ -2225,7 +2311,8 @@ const Charts = (() => {
     }
     body += `<g clip-path="url(#${F.clip})">${plot}</g>` + F.legend;
     body += `<line class="xhair" x1="0" x2="0" y1="${F.m.t}" y2="${F.m.t + F.ph}" stroke="#5a3fa6" stroke-dasharray="3 3" visibility="hidden"/>`;
-    return { svg: wrap(o.W, o.H, body), F, xDom: xDomZ, yDom: yDomZ, xAuto, yAuto, ylog: !!o.ylog, vis, vis2, y2Dom, Y2, H: o.H };
+    const Htot = o.H + (F.legendH || 0); // a legend below the chart makes the picture taller, not the plot smaller
+    return { svg: wrap(o.W, Htot, body), F, xDom: xDomZ, yDom: yDomZ, xAuto, yAuto, ylog: !!o.ylog, vis, vis2, y2Dom, Y2, H: Htot };
   }
 
   /* ---------- small multiples: one panel per group ---------- */
@@ -2254,7 +2341,7 @@ const Charts = (() => {
     }
     let body = '';
     const top0 = o.title ? 34 : 6;
-    if (o.title) body += `<text x="${o.W / 2}" y="22" font-size="${o.fsAxis * 1.15}" font-weight="bold" text-anchor="middle">${esc(o.title)}</text>`;
+    if (o.title) body += `<text data-axis="title" x="${o.W / 2}" y="22" font-size="${o.fsTitle || o.fsAxis * 1.15}" font-weight="bold" text-anchor="middle">${esc(o.title)}</text>`;
     const hits = [];
     o.panels.forEach((p, k) => {
       const cx = (k % cols) * pw, cy = top0 + Math.floor(k / cols) * ph;
@@ -2262,15 +2349,20 @@ const Charts = (() => {
       const fs = Math.max(8, o.fsTick - 1);
       const fsA = Math.max(8, o.fsAxis - 1);
       const showY2 = y2Dom && (k % cols === cols - 1 || k === n - 1);
-      const F = frame({ W: pw, H: ph, x: xDom, y: yDom, ylog: o.ylog, xlab: showX ? o.xlab : '', ylab: showY ? o.ylab : '',
+      const F = frame({ boldAxis: o.boldAxis, boldTick: o.boldTick, minorX: o.minorX, minorY: o.minorY, W: pw, H: ph, x: xDom, y: yDom, ylog: o.ylog, xlab: showX ? o.xlab : '', ylab: showY ? o.ylab : '',
         fsAxis: fsA, fsTick: fs, fsLeg: fs, title: p.label, yCount: 4, xCount: 5, extraRight: y2Dom ? rightWidth(y2Dom, fs, fsA, true) : 0 });
       let s = `<defs>${F.clipDef}</defs>` + F.axes;
       let Y2 = null;
-      if (y2Dom) { const ra = rightAxis(F, y2Dom, fs, fsA, showY2 ? o.y2lab : ''); s += ra.s; Y2 = ra.y2; }
+      if (y2Dom) { const ra = rightAxis(F, y2Dom, fs, fsA, showY2 ? o.y2lab : '', { axis: o.boldAxis, tick: o.boldTick, minor: o.minorY }); s += ra.s; Y2 = ra.y2; }
       if (p.sub) s += `<text x="${F.m.l + 6}" y="${F.m.t + 12}" font-size="${fs}" text-anchor="start" fill="#555">${esc(p.sub)}</text>`;
+      // combined panel: a small key of the groups in it
+      if (p.legend) p.legend.forEach((l, j) => {
+        const ly = F.m.t + (p.sub ? 26 : 12) + j * (fs + 3);
+        s += `<line x1="${F.m.l + 6}" x2="${F.m.l + 18}" y1="${ly - fs * 0.3}" y2="${ly - fs * 0.3}" stroke="${l.color}" stroke-width="2.5"/><text x="${F.m.l + 22}" y="${ly}" font-size="${fs - 1}" fill="#333">${esc(l.label)}</text>`;
+      });
       let plot = '';
       p.wells.forEach((w, i) => {
-        const col = Colors.shade(p.color, i, p.wells.length);
+        const col = w.color || Colors.shade(p.color, i, p.wells.length);
         const op = w.excl ? 0.25 : 1;
         if (w.tangent) plot += `<path d="${pathOf(w.tangent[0], w.tangent[1], F.x, F.y)}" stroke="${col}" stroke-width="1" stroke-dasharray="2 2" fill="none" opacity="${op}"/>`;
         if (w.fit) plot += `<path d="${pathOf(w.fit[0], w.fit[1], F.x, F.y)}" stroke="${col}" stroke-width="${o.lw}" fill="none" opacity="${op}"/>`;
@@ -2280,7 +2372,7 @@ const Charts = (() => {
           if (!Number.isFinite(w.y[j])) return;
           const px = F.x(t), py = F.y(w.y[j]);
           pts += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${Math.max(1.2, o.ps * 0.65)}"/>`;
-          hits.push({ x: cx + px, y: cy + py, well: w.id, t, v: w.y[j], group: p.label });
+          hits.push({ x: cx + px, y: cy + py, well: w.id, t, v: w.y[j], group: w.group || p.label });
         });
         plot += `<g fill="${w.excl ? '#fff' : col}" fill-opacity="${w.fit ? 0.55 : 0.9}" stroke="${col}" stroke-width=".6" opacity="${op}" data-well="${esc(w.id)}">${pts}</g>`;
         if (w.y2 && Y2) plot += `<path d="${pathOf(w.t, w.y2, F.x, Y2)}" stroke="${col}" stroke-width="${o.lw * 0.9}" stroke-dasharray="5 3" fill="none" opacity="${op}"/>`;
@@ -2294,7 +2386,7 @@ const Charts = (() => {
   /* ---------- parameter bar / dot chart ---------- */
   function bars(o) {
     // o.items: [{id,label,color,mean,err,values:[{v,well,excl}],star, gapBefore}]
-    const items = o.items;
+    const items = o.items, bs = o.barStyle || {};
     let lo = Infinity, hi = -Infinity;
     for (const it of items) {
       const e = Number.isFinite(it.err) ? it.err : 0;
@@ -2310,7 +2402,7 @@ const Charts = (() => {
     const maxLab = Math.max(...items.map(i => textW(i.label, o.fsTick)), 10);
     const slotsEst = (o.W - 120) / Math.max(1, items.length);
     const rot = maxLab > slotsEst * 0.95;
-    const F = frame({ W: o.W, H: o.H, x: [0, 1], y: yDom, xBand: true, xlab: o.xlab, ylab: o.ylab, title: o.title,
+    const F = frame({ boldAxis: o.boldAxis, boldTick: o.boldTick, fsTitle: o.fsTitle, minorY: o.minorY, W: o.W, H: o.H, x: [0, 1], y: yDom, xBand: true, xlab: o.xlab, ylab: o.ylab, title: o.title,
       fsAxis: o.fsAxis, fsTick: o.fsTick, fsLeg: o.fsLeg, xLabelsRot: rot ? Math.min(maxLab * 0.72 + 6, o.H * 0.35) : 0 });
     const Y = F.y;
     const gaps = items.filter(i => i.gapBefore).length;
@@ -2322,13 +2414,15 @@ const Charts = (() => {
     let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     items.forEach(it => {
       if (it.gapBefore) xcur += slot * 0.6;
-      const cxm = xcur + slot / 2, bw = slot * 0.62;
+      const cxm = xcur + slot / 2, bw = slot * (bs.width || 0.62);
+      const fillC = bs.fill === 'single' ? bs.color : bs.fill === 'grey' ? '#9a9a9a' : bs.fill === 'none' ? 'none' : it.color;
+      const lineC = bs.outline === 'black' ? '#111' : bs.outline === 'none' ? 'none' : bs.fill === 'single' ? bs.color : bs.fill === 'grey' ? '#555' : it.color;
       if (Number.isFinite(it.mean)) {
-        if (o.type === 'bar') body += `<rect x="${cxm - bw / 2}" y="${Math.min(Y(it.mean), base)}" width="${bw}" height="${Math.abs(base - Y(it.mean))}" fill="${it.color}" fill-opacity=".75" stroke="${it.isRef ? '#111' : it.color}" stroke-width="${it.isRef ? 2 : 1}"/>`;
-        else body += `<line x1="${cxm - bw * 0.35}" x2="${cxm + bw * 0.35}" y1="${Y(it.mean)}" y2="${Y(it.mean)}" stroke="${it.color}" stroke-width="2.5"/>`;
+        if (o.type === 'bar') body += `<rect x="${cxm - bw / 2}" y="${Math.min(Y(it.mean), base)}" width="${bw}" height="${Math.abs(base - Y(it.mean))}" fill="${fillC}" fill-opacity="${bs.opacity ?? 0.75}" stroke="${it.isRef && bs.markRef !== false ? '#111' : lineC === 'none' ? 'none' : lineC}" stroke-width="${it.isRef && bs.markRef !== false ? Math.max(2, (bs.olw ?? 1) + 1) : (bs.olw ?? 1)}"/>`;
+        else body += `<line x1="${cxm - bw * 0.35}" x2="${cxm + bw * 0.35}" y1="${Y(it.mean)}" y2="${Y(it.mean)}" stroke="${fillC === 'none' ? lineC : fillC}" stroke-width="2.5"/>`;
         if (Number.isFinite(it.err) && it.err > 0) {
           const a = Y(it.mean - (o.type === 'bar' && it.mean >= 0 && false ? 0 : it.err)), b = Y(it.mean + it.err), cap = bw * 0.18;
-          body += `<path d="M${cxm},${a}V${b}M${cxm - cap},${b}H${cxm + cap}M${cxm - cap},${a}H${cxm + cap}" stroke="#222" stroke-width="1.2" fill="none"/>`;
+          body += `<path d="M${cxm},${a}V${b}M${cxm - cap},${b}H${cxm + cap}M${cxm - cap},${a}H${cxm + cap}" stroke="${bs.errColor || '#222'}" stroke-width="${bs.errLW || 1.2}" fill="none"/>`;
         }
       }
       if (!Number.isFinite(it.mean)) {
@@ -2344,7 +2438,7 @@ const Charts = (() => {
       if (o.showPoints) for (const p of it.values) {
         if (!Number.isFinite(p.v)) continue;
         const px = cxm + (rnd() - 0.5) * bw * 0.5, py = Y(p.v);
-        body += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${o.ps}" fill="${p.excl ? '#fff' : '#fff'}" stroke="${p.excl ? '#bbb' : '#222'}" stroke-width="1" ${p.excl ? 'stroke-dasharray="1.5 1"' : ''}/>`;
+        body += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${o.ps}" fill="${p.excl ? '#fff' : bs.points === 'group' ? it.color : bs.points === 'black' ? '#222' : '#fff'}" stroke="${p.excl ? '#bbb' : bs.points === 'group' ? '#222' : '#222'}" stroke-width="1" ${p.excl ? 'stroke-dasharray="1.5 1"' : ''}/>`;
         hits.push({ x: px, y: py, well: p.well, v: p.v, group: it.label });
       }
       if (it.star) {
@@ -2385,7 +2479,7 @@ const Charts = (() => {
     }
     if (o.scale) {
       const sx = l + o.fmt.cols * cs + 24, sh = o.fmt.rows * ch - 20;
-      for (let i = 0; i < 40; i++) s += `<rect x="${sx}" y="${t + sh - (i + 1) * sh / 40}" width="14" height="${sh / 40 + 0.5}" fill="${Colors.viridis(i / 39)}"/>`;
+      for (let i = 0; i < 40; i++) s += `<rect x="${sx}" y="${t + sh - (i + 1) * sh / 40}" width="14" height="${sh / 40 + 0.5}" fill="${(o.scale.fn || Colors.viridis)(i / 39)}"/>`;
       s += `<text x="${sx + 18}" y="${t + 4}" font-size="10" dominant-baseline="hanging">${esc(o.scale.max)}</text>`;
       s += `<text x="${sx + 18}" y="${t + sh}" font-size="10">${esc(o.scale.min)}</text>`;
       s += `<text x="${sx}" y="${t + sh + 14}" font-size="10">${esc(o.scale.label)}</text>`;
@@ -2482,7 +2576,7 @@ const Export = (() => {
   const pngBlob = (svg, scale) => new Promise(res => svgToPng(svg, scale, res));
   return { xlsx, csv, download, svgToPng, pngBlob, zip };
 })();
-const APP_VERSION = '1.6';
+const APP_VERSION = '1.8';
 /* ═════════════════════════════════════════════════════════════════════
    7. THE APP — state, plate editor, views, events
    ═════════════════════════════════════════════════════════════════════ */
@@ -2491,15 +2585,20 @@ const App = (() => {
   const clone = o => JSON.parse(JSON.stringify(o));
   const DEFAULT_DISPLAY = { err: 'sd', errStyle: 'band', palette: 'distinct', wells: false, points: true, blanks: false, legend: true,
     lw: 2, ps: 2.5, fsAxis: 14, fsTick: 12, fsLeg: 12, w: 900, h: 540, title: '', xlab: 'Time (h)', ylab: 'OD600 (blank-corrected)', ymin: null, ymax: null,
-    flab: 'Fluorescence (RFU)' };
-  const st = {
-    fileName: null, blocks: [], blockIdx: 0, flIdx: null, fmt: Plate.formatFor(96), used: new Set(),
-    groups: [], excluded: new Set(), sel: new Set(),
-    S: clone(DEFAULT_SETTINGS), D: clone(DEFAULT_DISPLAY),
-    V: { tab: 'plate', curveData: 'corr', ylog: false, plateMode: 'layout', barMetric: 'mu', barType: 'bar', barPoints: true, ref: '',
-      statMetric: 'mu', statMode: 'ref', zoom: {}, panelFit: 'auto', panelLog: false, panelCols: 0, tableKind: 'wells', sortKey: null, sortDir: 1, showModels: false, autoChunk: 0 },
-    R: null, running: false, again: false, cache: new Map(), lastSvg: null, lastTable: null, lastName: 'chart',
-  };
+    flab: 'Fluorescence (RFU)',
+    // heat map, text emphasis, bar style, and axis titles typed in for individual charts
+    heat: 'viridis', heatRev: false, boldAxis: false, boldTick: false, fsTitle: 16,
+    legendPos: 'below', showN: true, minorX: false, minorY: false,
+    barFill: 'group', barColor: '#5a3fa6', barOpacity: 0.75, barOutline: 'same', barLW: 1, barWidth: 0.62, barErr: '#222222', barPts: 'white',
+    axisTitles: {} };
+  const DEFAULT_VIEW = { tab: 'plate', curveData: 'corr', ylog: false, plateMode: 'layout', barMetric: 'mu', barType: 'bar', barPoints: true, ref: '',
+    statMetric: 'mu', statMode: 'ref', zoom: {}, panelFit: 'auto', panelLog: false, panelCols: 0, tableKind: 'wells', sortKey: null, sortDir: 1, showModels: false, autoChunk: 0 };
+  // everything that belongs to one analysis; each session tab keeps its own copy
+  const blankState = () => ({ fileName: null, blocks: [], blockIdx: 0, flIdx: null, fmt: Plate.formatFor(96), used: new Set(),
+    groups: [], excluded: new Set(), sel: new Set(), S: clone(DEFAULT_SETTINGS), D: clone(DEFAULT_DISPLAY), V: clone(DEFAULT_VIEW),
+    R: null, cache: new Map(), lastSvg: null, lastTable: null, lastName: 'chart', initial: null, autoInfo: null, sheetsCache: null, runError: null });
+  const SESSION_KEYS = Object.keys(blankState());
+  const st = Object.assign(blankState(), { running: false, again: false });
   const block = () => st.blocks[st.blockIdx];
   const flBlock = () => st.flIdx != null && st.flIdx !== st.blockIdx ? st.blocks[st.flIdx] || null : null;
   const dual = () => !!(st.R && st.R.fl);
@@ -2543,13 +2642,19 @@ const App = (() => {
     message('Reading ' + esc(file.name) + '…');
     try {
       const res = await IO.readFile(file);
-      if (res.project) return restoreProject(res.project, file.name);
-      st.sheetsCache = res;
+      if (res.project) {
+        const p = res.project;
+        if (p && (p.app === 'Sigmoid' || p.app === 'GrowthScope') && Array.isArray(p.blocks) && p.blocks.length) freshSessionForFile();
+        return restoreProject(p, file.name);
+      }
       const blocks = Blocks.findAll(res, st.S.timeUnit);
       if (!blocks.length) {
         message('No plate data found. Sigmoid looks for a header row with a <b>Time</b> column followed by well names (A1, A2 …), as exported by Gen5, Tecan or SoftMax, or a simple table with Time in the first column.', 'err');
         return;
       }
+      const unit = st.S.timeUnit;
+      freshSessionForFile();
+      st.S.timeUnit = unit; st.sheetsCache = res;
       st.fileName = file.name; st.blocks = blocks; st.groups = []; st.excluded = new Set(); st.sel.clear(); st.cache.clear();
       const pr = pickReads(blocks); st.flIdx = pr.fl;
       setBlock(pr.od, true);
@@ -2586,6 +2691,7 @@ const App = (() => {
     $('flTag').textContent = flBlock() ? flBlock().label : '';
     $('fileChip').textContent = b ? (st.fileName || '') + (st.blocks.length > 1 ? ' · ' + b.label + (flBlock() ? ' + ' + flBlock().label : '') : '') : 'no data loaded';
     ['btnSave', 'btnExport', 'btnReset'].forEach(id => $(id).disabled = !b);
+    renderSessionTabs();
   }
   /* what the automatic layout found, in words */
   function autoSummary(a, fb) {
@@ -2603,7 +2709,7 @@ const App = (() => {
     st.cache.clear();
     st.V.zoom = {};
     st.R = null; st.runError = null;   // results of the previous data must not be shown with this one
-    if (fresh) Object.assign(st.V, { ref: '', sortKey: null });
+    if (fresh) { Object.assign(st.V, { ref: '', sortKey: null }); st.D.panelSets = []; }
     if (fresh || !st.groups.length) {
       st.autoInfo = null;
       if (b.aliases) st.groups = Layout.fromAliases(b.aliases);
@@ -2631,22 +2737,40 @@ const App = (() => {
     clearTimeout(runTimer);
     runTimer = setTimeout(runNow, delay);
   }
+  // progress: the bar under the top bar, a "Fitting curves… 40%" badge, and the bar in the rail
+  let progTimer = null;
+  function showProgress(f) {
+    clearTimeout(progTimer);
+    const pct = Math.round(f * 100) + '%';
+    $('prog').style.width = pct; $('prog2').style.width = pct; $('runPct').textContent = pct;
+    $('runPill').classList.remove('hidden');
+    const vp = $('viewProg'); if (vp) { vp.style.width = pct; $('viewPct').textContent = pct; }
+  }
+  function endProgress() {
+    $('prog').style.width = '100%'; $('prog2').style.width = '100%';
+    progTimer = setTimeout(() => { $('prog').style.width = '0'; $('prog2').style.width = '0'; $('runPill').classList.add('hidden'); }, 350);
+  }
   async function runNow() {
     if (!block()) return;
     if (st.running) { st.again = true; return; }
     st.running = true;
+    const sess = curSess, t0 = performance.now();
     $('runStatus').textContent = 'Fitting curves…';
-    const t0 = performance.now();
+    // only show the badge for runs that take a moment (cached re-runs finish at once)
+    const slow = setTimeout(() => showProgress(0), 120);
+    let R = null, err = null, status;
     try {
-      st.R = await Analysis.run(block(), st.groups, st.excluded, st.S, f => { $('prog').style.width = (f * 100).toFixed(0) + '%'; }, st.cache, flBlock());
-      st.runError = null;
-      const nw = Object.keys(st.R.wells).length;
-      $('runStatus').textContent = `${nw} wells analysed in ${((performance.now() - t0) / 1000).toFixed(1)} s`;
-    } catch (e) { console.error(e); st.R = null; st.runError = e.message || String(e); $('runStatus').textContent = 'Analysis stopped – see the message on the right.'; }
+      R = await Analysis.run(block(), st.groups, st.excluded, st.S, f => { if (f < 1) showProgress(f); }, st.cache, flBlock());
+      status = `${Object.keys(R.wells).length} wells analysed in ${((performance.now() - t0) / 1000).toFixed(1)} s`;
+    } catch (e) { console.error(e); err = e.message || String(e); status = 'Analysis stopped – see the message on the right.'; }
+    clearTimeout(slow); endProgress();
     st.running = false;
-    setTimeout(() => { $('prog').style.width = '0'; }, 400);
+    if (sess !== curSess) {
+      // the user switched to another session tab while this one was being analysed: keep the result with its own session
+      if (sess.saved) { sess.saved.R = R; sess.saved.runError = err; sess.status = status; }
+    } else { st.R = R; st.runError = err; $('runStatus').textContent = status; }
     if (st.again) { st.again = false; return runNow(); }
-    render();
+    if (sess === curSess) render();
   }
   function resummarize() { if (st.R) { Analysis.summarizeAll(st.R, st.groups, st.excluded, st.S); render(); } }
 
@@ -2697,6 +2821,68 @@ const App = (() => {
     hist.lock = false;
   }
 
+  /* ════════════════ SESSION TABS ════════════════
+     Several analyses side by side in one window. The session on screen lives in `st`
+     (and `hist`); the others are parked in session.saved until their tab is clicked.   */
+  const sessions = []; let curSess = null, sessSeq = 0;
+  const newSession = () => ({ id: ++sessSeq, saved: null, hist: { stack: [], idx: -1 }, msg: '', status: '' });
+  function stash() {
+    if (hist.timer) recordNow();
+    const s = curSess; s.saved = {}; for (const k of SESSION_KEYS) s.saved[k] = st[k];
+    s.hist = { stack: hist.stack, idx: hist.idx }; s.msg = $('loadMsg').innerHTML; s.status = $('runStatus').textContent;
+  }
+  // a new tab starts with the analysis settings and chart style of the tab it was opened from
+  const inherited = () => { const b = blankState(); b.S = clone(st.S); b.D = Object.assign(clone(st.D), { axisTitles: clone(st.D.axisTitles || {}), panelSets: [] }); return b; };
+  function activate(s, start) {
+    curSess = s; Object.assign(st, s.saved || start || blankState()); s.saved = null;
+    hist.stack = s.hist.stack; hist.idx = s.hist.idx; updateHistButtons();
+    $('loadMsg').innerHTML = s.msg || ''; $('runStatus').textContent = s.status || '';
+    hideTip(); document.querySelector('.modal-bg')?.remove();
+    writeInputs(); if (block()) prepareBlock(); refreshChrome(); render();
+    if (block()) scheduleRun(0); // brings the results up to date (quick: earlier fits are cached)
+  }
+  function switchSession(s) { if (s && s !== curSess) { stash(); activate(s); } }
+  function addSession() { const start = inherited(); stash(); const s = newSession(); sessions.push(s); activate(s, start); message('New tab: open a plate-reader file or a saved project here. Its settings start as a copy of the tab you came from.'); recordNow(); }
+  // a file opened while this tab already holds data goes into a new tab
+  function freshSessionForFile() {
+    if (!block()) return;
+    const start = inherited();
+    stash(); const s = newSession(); sessions.push(s);
+    curSess = s; Object.assign(st, start); hist.stack = s.hist.stack; hist.idx = -1;
+  }
+  function closeSession(s) {
+    const i = sessions.indexOf(s); if (i < 0) return;
+    sessions.splice(i, 1);
+    if (s !== curSess) { renderSessionTabs(); return; }
+    if (!sessions.length) sessions.push(newSession());
+    activate(sessions[Math.min(i, sessions.length - 1)]);
+  }
+  const sessName = s => { const f = s === curSess ? st.fileName : s.saved && s.saved.fileName; return f ? f.replace(/\.(xlsx|xlsm|csv|tsv|txt|json)$/i, '').replace(/\.sigmoid$/, '') : 'New analysis'; };
+  const sessHasData = s => s === curSess ? !!block() : !!(s.saved && s.saved.blocks.length);
+  function renderSessionTabs() {
+    const bar = $('sessBar'); if (!bar) return;
+    bar.innerHTML = sessions.map(s => {
+      const nm = sessName(s), short = nm.length > 30 ? nm.slice(0, 29) + '…' : nm;
+      return `<div class="sesstab${s === curSess ? ' on' : ''}" data-s="${s.id}" title="${esc(nm)}"><button class="sname" data-s="${s.id}">${esc(short)}</button>`
+        + `<button class="sclose" data-close="${s.id}" title="Close this tab" aria-label="Close ${esc(nm)}">×</button></div>`;
+    }).join('') + `<button class="sessnew" id="sessNew" title="Start another analysis in a new tab (or open a file while this tab has data)">+ New analysis</button>`;
+  }
+  function bindSessionTabs() {
+    const bar = $('sessBar');
+    bar.addEventListener('click', e => {
+      const c = e.target.closest('[data-close]');
+      if (c) {
+        const s = sessions.find(x => x.id === +c.dataset.close);
+        // closing a tab with data cannot be undone: ask with a second click
+        if (sessHasData(s) && !c.dataset.armed) { c.dataset.armed = '1'; c.textContent = 'Close?'; c.classList.add('armed'); setTimeout(() => { if (c.isConnected) { delete c.dataset.armed; c.textContent = '×'; c.classList.remove('armed'); } }, 2500); return; }
+        closeSession(s); return;
+      }
+      if (e.target.closest('#sessNew')) { addSession(); return; }
+      const t = e.target.closest('[data-s]'); if (t) switchSession(sessions.find(x => x.id === +t.dataset.s));
+    });
+    addEventListener('beforeunload', e => { if (sessions.some(sessHasData)) { e.preventDefault(); e.returnValue = ''; } });
+  }
+
   /* Reset: same file, default settings, original layout */
   function resetFile() {
     if (!block()) return;
@@ -2726,7 +2912,7 @@ const App = (() => {
     Object.assign(st.V, { tab: 'plate', zoom: {}, ref: '', sortKey: null, plateMode: 'layout', ylog: false, panelLog: false, curveData: 'corr' });
     $('runStatus').textContent = '';
     writeInputs(); refreshChrome();
-    message(had ? 'Everything was cleared. Press <b>Undo</b> (Ctrl+Z) if that was a mistake.' : '', 'warn');
+    message(had ? 'This tab was cleared. Press <b>Undo</b> (Ctrl+Z) if that was a mistake.' : '', 'warn');
     render();
     recordNow();
   }
@@ -2736,7 +2922,8 @@ const App = (() => {
     s_source: 'source', s_winH: 'winH', s_r2min: 'r2min', s_odMin: 'odMin', s_floor: 'floor', s_odThr: 'odThr', s_trimDecline: 'trimDecline',
     s_autofl: 'autofl', s_fMin: 'fMin', s_fStart: 'fStart', s_fodLevels: 'fodLevels', s_odLinMax: 'odLinMax' };
   const D_FIELDS = { d_err: 'err', d_errStyle: 'errStyle', d_palette: 'palette', d_wells: 'wells', d_points: 'points', d_blanks: 'blanks', d_legend: 'legend',
-    d_lw: 'lw', d_ps: 'ps', d_fsAxis: 'fsAxis', d_fsTick: 'fsTick', d_fsLeg: 'fsLeg', d_w: 'w', d_h: 'h', d_title: 'title', d_xlab: 'xlab', d_ylab: 'ylab', d_ymin: 'ymin', d_ymax: 'ymax', d_flab: 'flab' };
+    d_lw: 'lw', d_ps: 'ps', d_fsAxis: 'fsAxis', d_fsTick: 'fsTick', d_fsLeg: 'fsLeg', d_w: 'w', d_h: 'h', d_title: 'title', d_xlab: 'xlab', d_ylab: 'ylab', d_ymin: 'ymin', d_ymax: 'ymax', d_flab: 'flab', d_boldAxis: 'boldAxis', d_boldTick: 'boldTick', d_fsTitle: 'fsTitle',
+    d_legendPos: 'legendPos', d_showN: 'showN', d_minorX: 'minorX', d_minorY: 'minorY' };
   // number fields that may be left empty ("auto" / "start" / "end"); the others fall back to their default
   const OPTIONAL = new Set(['tmin', 'tmax', 'fMin', 'fStart', 'ymin', 'ymax']);
   function readInput(el, key, defaults) {
@@ -2814,9 +3001,19 @@ const App = (() => {
     record();
     if (!block()) { v.innerHTML = welcomeHtml(); bindWelcome(); return; }
     if (!st.R && st.runError) { v.innerHTML = `<div class="card"><div class="msg err">The analysis could not run: ${esc(st.runError)}</div></div>`; return; }
-    if (!st.R) { v.innerHTML = `<div class="card"><div class="status">Analysing…</div></div>`; return; }
+    if (!st.R) { v.innerHTML = `<div class="card"><div class="status">Fitting curves… <b id="viewPct">0%</b></div><div class="progress" style="margin-top:8px;max-width:420px"><i id="viewProg"></i></div></div>`; return; }
+    st.axisAuto = null;
     ({ plate: viewPlate, curves: viewCurves, panels: viewPanels, rate: viewRate, bars: viewBars, stats: viewStats, table: viewTable, raw: viewRaw, methods: viewMethods })[st.V.tab]();
     const cs = $('chartSave'); if (cs) cs.onclick = openSaveDialog;
+    const ae = $('axEdit'); if (ae) ae.onclick = () => openAxisDialog();
+    const lp = $('legPos');
+    if (lp) {
+      lp.value = st.D.legend ? (st.D.legendPos === 'right' ? 'right' : 'below') : 'none';
+      lp.onchange = e => { const v = e.target.value; st.D.legend = v !== 'none'; if (v !== 'none') st.D.legendPos = v; writeInputs(); render(); };
+      $('legN').onchange = e => { st.D.showN = e.target.checked; writeInputs(); render(); };
+    }
+    const pp = $('paper');
+    if (pp && st.axisAuto) pp.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-axis]'); if (t) { e.stopPropagation(); openAxisDialog(t.dataset.axis); } }, true);
     const sa = $('showAll'); if (sa) sa.onclick = () => { st.groups.forEach(g => { g.hidden = false; }); render(); };
   }
 
@@ -2855,7 +3052,7 @@ const App = (() => {
     let heat = null;
     if (mode !== 'layout') {
       const vals = [...st.used].map(w => R.wells[w] && R.wells[w].params ? R.wells[w].params[mode] : NaN).filter(Number.isFinite);
-      heat = { lo: Math.min(...vals), hi: Math.max(...vals) };
+      heat = { lo: Math.min(...vals), hi: Math.max(...vals), fn: Colors.heat(st.D.heat, st.D.heatRev) };
       if (!vals.length) heat = null;
     }
     let ymaxAll = 0;
@@ -2874,6 +3071,8 @@ const App = (() => {
           <option value="layout">Group (layout)</option>
           ${METRICS.filter(m => m.key !== 'r2' || st.S.source !== 'mf').map(m => `<option value="${m.key}">${esc(m.label)}</option>`).join('')}
         </select></label>
+        ${mode !== 'layout' ? `<label class="fld"><span>Colour scale</span><select id="heatPal">${Object.entries(Colors.HEAT).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('')}</select></label>
+        <label class="chk" title="Swap the colours for low and high values"><input type="checkbox" id="heatRev" ${st.D.heatRev ? 'checked' : ''}> Reverse</label>` : ''}
       </div>
       <div class="selbar">
         <b id="selCount">${nSel ? nSel + ' selected' : 'Drag across wells to select'}</b>
@@ -2898,7 +3097,7 @@ const App = (() => {
         let bg = 'var(--panel)', line = '#55506a', label = g ? g.name : 'ungrouped', lc = g ? cm[g.id] : 'var(--muted)';
         if (heat) {
           const v = R.wells[w] && R.wells[w].params ? R.wells[w].params[mode] : NaN;
-          if (Number.isFinite(v)) { const tt = heat.hi > heat.lo ? (v - heat.lo) / (heat.hi - heat.lo) : 0.5; bg = Colors.viridis(tt); line = tt > 0.6 ? '#1d1a2b' : '#ffffff'; lc = line; label = fmt(v, METRIC[mode].d); }
+          if (Number.isFinite(v)) { const tt = heat.hi > heat.lo ? (v - heat.lo) / (heat.hi - heat.lo) : 0.5; bg = heat.fn(tt); line = Colors.ink(bg); lc = line; label = fmt(v, METRIC[mode].d); }
           else { label = '—'; }
         } else if (g) { bg = tint(cm[g.id], 0.82); line = cm[g.id]; lc = Colors.mix(cm[g.id], '#000000', 0.25); }
         const ys = b.wells[w], ts = b.times;
@@ -2914,7 +3113,7 @@ const App = (() => {
     }
     html += `</div></div>
       <div class="plate-legend">
-        ${heat ? `<span class="heatscale">${fmt(heat.lo, METRIC[mode].d)} <i style="background:linear-gradient(90deg,${[0, .25, .5, .75, 1].map(Colors.viridis).join(',')})"></i> ${fmt(heat.hi, METRIC[mode].d)} ${esc(METRIC[mode].unit)}</span>` : ''}
+        ${heat ? `<span class="heatscale">${fmt(heat.lo, METRIC[mode].d)} <i style="background:linear-gradient(90deg,${[0, .2, .4, .6, .8, 1].map(heat.fn).join(',')})"></i> ${fmt(heat.hi, METRIC[mode].d)} ${esc(METRIC[mode].unit)}</span>` : ''}
         <span><span class="sw" style="background:repeating-linear-gradient(135deg,var(--empty) 0 3px,transparent 3px 6px)"></span>no data</span>
         <span>◌ control group</span><span>╱ excluded</span>${fb ? `<span><span class="sw" style="background:none;border:0;border-top:2px dashed #c2185b;height:0"></span>${esc(fb.label)} (raw, dashed)</span>` : ''}
         <span>Click row letters or column numbers to select a whole row or column. Shift-drag adds to the selection.</span>
@@ -2923,6 +3122,7 @@ const App = (() => {
     html += groupEditorHtml(cm);
     $('view').innerHTML = html;
     $('plateMode').value = mode;
+    if ($('heatPal')) { $('heatPal').value = st.D.heat; $('heatPal').onchange = e => { st.D.heat = e.target.value; render(); }; $('heatRev').onchange = e => { st.D.heatRev = e.target.checked; render(); }; }
     bindPlate();
     st.lastSvg = () => plateSvgForExport(cm, heat, wg);
     st.lastName = 'plate_layout';
@@ -3147,12 +3347,12 @@ const App = (() => {
     for (const w of st.used) {
       const g = wg[w], r = st.R.wells[w];
       const cell = { label: g ? g.name : '', excl: st.excluded.has(w), spark: [st.R.t, r.smooth, ymax || 1] };
-      if (heat) { const v = r.params ? r.params[mode] : NaN; const tt = heat.hi > heat.lo ? (v - heat.lo) / (heat.hi - heat.lo) : 0.5; cell.fill = Number.isFinite(v) ? Colors.viridis(tt) : '#fff'; cell.line = tt > 0.6 ? '#222' : '#fff'; cell.textColor = cell.line; cell.label = fmt(v, METRIC[mode].d); }
+      if (heat) { const v = r.params ? r.params[mode] : NaN; const tt = heat.hi > heat.lo ? (v - heat.lo) / (heat.hi - heat.lo) : 0.5; cell.fill = Number.isFinite(v) ? heat.fn(tt) : '#fff'; cell.line = Colors.ink(cell.fill); cell.textColor = cell.line; cell.label = fmt(v, METRIC[mode].d); }
       else { cell.fill = g ? tint(cm[g.id], 0.8) : '#fff'; cell.line = g ? cm[g.id] : '#333'; }
       cells[w] = cell;
     }
     return Charts.plateSvg({ fmt: st.fmt, cells, title: st.D.title || (heat ? METRIC[mode].label + (METRIC[mode].unit ? ' (' + METRIC[mode].unit + ')' : '') : 'Plate layout'),
-      scale: heat ? { min: fmt(heat.lo, METRIC[mode].d), max: fmt(heat.hi, METRIC[mode].d), label: METRIC[mode].unit } : null });
+      scale: heat ? { min: fmt(heat.lo, METRIC[mode].d), max: fmt(heat.hi, METRIC[mode].d), label: METRIC[mode].unit, fn: heat.fn } : null });
   }
 
   /* ---------- chart helpers ---------- */
@@ -3160,6 +3360,14 @@ const App = (() => {
   // groups picked there are drawn even if they are hidden on screen
   const chartGroups = () => st.groups.filter(g => (st.D.blanks || isSampleRole(g.role)) && st.R.groups[g.id] && st.R.groups[g.id].n && (!st.onlyIds || st.onlyIds.has(g.id)));
   const isHidden = g => !!g.hidden && !st.onlyIds;
+  /* Axis titles typed in for one chart override the automatic ones. key = tab + view (+ parameter);
+     the chart view stores which titles it drew in st.axisAuto, so the editor knows what to offer. */
+  const axT = (key, axis, auto) => { const o = (st.D.axisTitles || {})[key]; return o && o[axis] != null ? o[axis] : auto; }; // '' = no title
+  const textStyle = () => ({ boldAxis: !!st.D.boldAxis, boldTick: !!st.D.boldTick, fsTitle: st.D.fsTitle, minorX: !!st.D.minorX, minorY: !!st.D.minorY, legendPos: st.D.legendPos === 'right' ? 'right' : 'below' });
+  function axes(key, list) { // list: [[axis, what it is, automatic text]]
+    st.axisAuto = { key, list };
+    const o = {}; for (const [a, , auto] of list) o[a] = axT(key, a, auto); return o;
+  }
   // "± SD" etc. on an axis label only when some drawn group has replicate wells
   const errSuffix = () => st.D.err !== 'none' && chartGroups().some(g => !isHidden(g) && st.R.groups[g.id].n > 1) ? ' ' + Charts.ERR_LABEL[st.D.err] : '';
   let pendingHide = null; // a click hides a line a moment later, so that a double-click can still reset the zoom
@@ -3179,7 +3387,10 @@ const App = (() => {
     const nHid = st.R ? st.groups.filter(g => g.hidden && ((!samplesOnly && st.D.blanks) || isSampleRole(g.role))).length : 0;
     return nHid ? `<button class="btn small" id="showAll" title="Bring back every hidden group">Show all (${nHid} hidden)</button>` : '';
   };
-  const timeToolbar = (extra) => `<div class="toolbar">${extra}<button class="btn small" id="chartSave" title="Save the chart for chosen groups, together or one file per group">Save charts…</button>`
+  const legendCtl = () => `<label class="fld"><span>Legend</span><select id="legPos"><option value="below">Below the chart</option><option value="right">Right of the chart</option><option value="none">No legend</option></select></label>`
+    + `<label class="chk" title="Show the number of replicate wells after each name"><input type="checkbox" id="legN" ${st.D.showN !== false ? 'checked' : ''}> n = in names</label>`;
+  const timeToolbar = (extra) => `<div class="toolbar">${extra}${legendCtl()}<button class="btn small" id="chartSave" title="Save the chart for chosen groups, together or one file per group">Save charts…</button>`
+      + `<button class="btn small" id="axEdit" title="Change the axis titles of this chart (or click a title on the chart)">Axis titles…</button>`
       + showAllBtn()
       + `<div class="grow"></div><span class="status">Point at a line to see its name · click a line to hide it · click a legend entry to show or hide · drag to zoom, double-click for the full view</span></div>`;
 
@@ -3337,7 +3548,7 @@ const App = (() => {
       else { y = gr.mean; sd = gr.sd; wells = gr.wells.map(w => ({ id: w, y: R.wells[w].smooth })); }
       n = R.t.map((_, j) => wells.filter(x => Number.isFinite(x.y[j])).length);
       const err = sd.map((v, j) => Number.isFinite(v) ? Charts.errOf(v, n[j], D.err) : NaN);
-      return { id: g.id, label: g.name + (gr.n > 1 ? ` (n=${gr.n})` : ''), color: cm[g.id], t: R.t, y, err, wells, off: isHidden(g), n };
+      return { id: g.id, label: g.name + (D.showN !== false && gr.n > 1 ? ` (n=${gr.n})` : ''), color: cm[g.id], t: R.t, y, err, wells, off: isHidden(g), n };
     });
   }
   const CURVE_VIEWS = [['od', 'OD only'], ['fl', 'Fluorescence only'], ['dual', 'OD + fluorescence (two y-axes)'], ['stack', 'OD and fluorescence stacked'],
@@ -3351,20 +3562,24 @@ const App = (() => {
     const errTxt = errSuffix();
     const odLab = raw ? (D.ylab || 'OD').replace(/\s*\(blank-corrected\)/, '') + ' (raw)' : D.ylab;
     const flLab = raw ? (D.flab || 'Fluorescence').replace(/,?\s*corrected\)?/, ')').replace('()', '') + ' (raw)' : D.flab;
-    const common = { W: D.w, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg, legend: D.legend, lw: D.lw, ps: D.ps, points: D.points,
-      showWells: D.wells, errKind: D.err, errStyle: D.errStyle, title: D.title };
+    const odX = (D.ylab || 'OD').replace(/\s*\(blank-corrected\)/, '');
+    const L = axes(zkey, view === 'od' || view === 'fl' || view === 'fod' ? [['title', 'Chart title', D.title], ['x', 'X axis', D.xlab], ['y', 'Y axis', (view === 'od' ? odLab : view === 'fl' ? flLab : 'F/OD (RFU per OD unit)') + errTxt]]
+      : view === 'dual' ? [['title', 'Chart title', D.title], ['x', 'X axis', D.xlab], ['y', 'Left Y axis (OD)', odLab + errTxt], ['y2', 'Right Y axis (fluorescence)', flLab]]
+      : view === 'stack' ? [['title', 'Chart title', D.title], ['x', 'X axis', D.xlab], ['y', 'Upper Y axis (OD)', odLab + errTxt], ['y2', 'Lower Y axis (fluorescence)', flLab + errTxt]]
+      : [['title', 'Chart title', D.title], ['x', 'X axis', odX], ['y', 'Y axis', D.flab]]);
+    const common = Object.assign({ W: D.w, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg, legend: D.legend, lw: D.lw, ps: D.ps, points: D.points,
+      showWells: D.wells, errKind: D.err, errStyle: D.errStyle, title: L.title }, textStyle());
     let C, svg, table;
     const odS = () => seriesFor(raw ? 'raw' : 'corr'), flS = () => seriesFor(raw ? 'flraw' : 'fl');
     if (view === 'od' || view === 'fl' || view === 'fod') {
       const series = view === 'od' ? odS() : view === 'fl' ? flS() : seriesFor('fod');
-      const ylab = (view === 'od' ? odLab : view === 'fl' ? flLab : 'F/OD (RFU per OD unit)') + errTxt;
       C = Charts.timecourse(Object.assign({}, common, { series, t: R.t, H: D.h, ylog: V.ylog, logFloor: view === 'od' ? st.S.floor : (R.fl ? R.fl.fMin : 1),
-        xlab: D.xlab, ylab, ymin: view === 'od' ? D.ymin : null, ymax: view === 'od' ? D.ymax : null, zero: !V.ylog, zoom: V.zoom[zkey] }));
+        xlab: L.x, ylab: L.y, ymin: view === 'od' ? D.ymin : null, ymax: view === 'od' ? D.ymax : null, zero: !V.ylog, zoom: V.zoom[zkey] }));
       svg = C.svg; table = curveRows(series);
     } else if (view === 'dual') {
       const a = odS(), b = flS();
-      C = Charts.timecourse(Object.assign({}, common, { series: a, series2: b, t: R.t, H: D.h, ylog: V.ylog, logFloor: st.S.floor, xlab: D.xlab,
-        ylab: odLab + errTxt, y2lab: flLab, ymin: D.ymin, ymax: D.ymax, zero: !V.ylog, zoom: V.zoom[zkey] ? { x: V.zoom[zkey].x } : null,
+      C = Charts.timecourse(Object.assign({}, common, { series: a, series2: b, t: R.t, H: D.h, ylog: V.ylog, logFloor: st.S.floor, xlab: L.x,
+        ylab: L.y, y2lab: L.y2, ymin: D.ymin, ymax: D.ymax, zero: !V.ylog, zoom: V.zoom[zkey] ? { x: V.zoom[zkey].x } : null,
         legendExtra: [{ id: '', label: 'OD (left axis)', color: '#444' }, { id: '', label: 'Fluorescence (right)', color: '#444', dash: true }] }));
       C.xOnly = true;
       C.tipRows = j => C.vis.map((s, i) => [s, s.y[j], b.find(x => x.id === s.id)]).filter(r => Number.isFinite(r[1]))
@@ -3373,11 +3588,13 @@ const App = (() => {
     } else if (view === 'stack') {
       const a = odS(), b = flS(), hTop = Math.round(D.h * 0.55), hBot = Math.round(D.h * 0.55);
       const z = V.zoom[zkey] ? { x: V.zoom[zkey].x } : null;
+      const below = common.legendPos === 'below';
       const mk = (series, H, ylab, xlab, lm, title) => Charts.timecourse(Object.assign({}, common, { series, t: R.t, H, ylog: V.ylog, logFloor: series === a ? st.S.floor : (R.fl ? R.fl.fMin : 1),
-        xlab, ylab, zero: !V.ylog, zoom: z, leftMargin: lm, title }));
-      let top = mk(a, hTop, odLab + errTxt, '', 0, D.title), bot = mk(b, hBot, flLab + errTxt, D.xlab, 0, '');
+        xlab, ylab, zero: !V.ylog, zoom: z, leftMargin: lm, title, legend: common.legend && (!below || series !== a) }));
+      let top = mk(a, hTop, L.y, '', 0, L.title), bot = mk(b, hBot, L.y2, L.x, 0, '');
       const lm = Math.max(top.F.m.l, bot.F.m.l);
-      top = mk(a, hTop, odLab + errTxt, '', lm, D.title); bot = mk(b, hBot, flLab + errTxt, D.xlab, lm, '');
+      top = mk(a, hTop, L.y, '', lm, L.title); bot = mk(b, hBot, L.y2, L.x, lm, '');
+      bot.svg = bot.svg.replace('data-axis="y"', 'data-axis="y2"'); // the lower chart's title is edited as "lower Y axis"
       svg = Charts.stack([top, bot], D.w);
       const span = { m: { l: top.F.m.l, t: top.F.m.t }, pw: top.F.pw, ph: hTop + bot.F.m.t + bot.F.ph - top.F.m.t, x: top.F.x };
       C = { F: span, parts: [top, bot], xDom: top.xDom, yDom: top.yDom, xAuto: top.xAuto, yAuto: top.yAuto, ylog: top.ylog, vis: top.vis, xOnly: true,
@@ -3389,7 +3606,7 @@ const App = (() => {
       const series = a.map(s => { const f = b.find(x => x.id === s.id); return Object.assign({}, s, { t: s.y, y: f.y, err: s.y.map(() => NaN),
         wells: s.wells.map(w => ({ id: w.id, y: R.wells[w.id].fl ? R.wells[w.id].fl.smooth : [], x: w.y })) }); });
       const allX = series.flatMap(s => s.t.filter(Number.isFinite));
-      C = Charts.timecourse(Object.assign({}, common, { series, t: allX.length ? allX : [0, 1], H: D.h, xlab: (D.ylab || 'OD').replace(/\s*\(blank-corrected\)/, ''), ylab: D.flab,
+      C = Charts.timecourse(Object.assign({}, common, { series, t: allX.length ? allX : [0, 1], H: D.h, xlab: L.x, ylab: L.y,
         errKind: 'none', showWells: false, zero: true, zoom: V.zoom[zkey], shadeX: st.S.odLinMax, shadeLabel: `above OD ${st.S.odLinMax} (outside the reliable range)` }));
       svg = C.svg;
       const hits = []; for (const sr of C.vis) sr.t.forEach((x, i) => { if (Number.isFinite(x) && Number.isFinite(sr.y[i])) hits.push({ x: C.F.x(x), y: C.F.y(sr.y[i]), group: sr.label, od: x, f: sr.y[i], tt: R.t[i] }); });
@@ -3448,8 +3665,9 @@ const App = (() => {
     const rd = dual() ? (V.rateRead || 'od') : 'od', key = 'rate:' + rd;
     const series = seriesFor(rd === 'fl' ? 'flrate' : 'rate');
     const what = rd === 'fl' ? 'ln(fluorescence)' : 'ln(OD)';
-    const C = Charts.timecourse({ series, t: st.R.t, W: D.w, H: D.h, xlab: D.xlab, ylab: (rd === 'fl' ? 'Specific rate of fluorescence increase (h⁻¹)' : 'Specific growth rate µ (h⁻¹)') + errSuffix(),
-      title: D.title, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg, legend: D.legend, lw: D.lw, ps: D.ps, points: D.points, showWells: D.wells,
+    const L = axes(key, [['title', 'Chart title', D.title], ['x', 'X axis', D.xlab], ['y', 'Y axis', (rd === 'fl' ? 'Specific rate of fluorescence increase (h⁻¹)' : 'Specific growth rate µ (h⁻¹)') + errSuffix()]]);
+    const C = Charts.timecourse({ ...textStyle(), series, t: st.R.t, W: D.w, H: D.h, xlab: L.x, ylab: L.y,
+      title: L.title, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg, legend: D.legend, lw: D.lw, ps: D.ps, points: D.points, showWells: D.wells,
       errKind: D.err, errStyle: D.errStyle, zero: false, zeroLine: true, zoom: st.V.zoom[key] });
     const thr = rd === 'fl' ? `lowest usable F (${fmt(st.R.fl.fMin, 0)})` : `lowest usable OD (${st.S.odMin})`;
     $('view').innerHTML = `<div class="card">${timeToolbar(`${dual() ? `<label class="fld"><span>Read</span><select id="rRead"><option value="od">OD</option><option value="fl">Fluorescence</option></select></label>` : ''}<p class="note" style="margin:0;max-width:62ch">Slope of ${what} in a sliding window of ${st.R && Object.values(st.R.wells).find(w => w.mf) ? Object.values(st.R.wells).find(w => w.mf).mf.window : '–'} readings (set by "µmax window"). Readings below the ${thr} are skipped. The peak of each trace is ${rd === 'fl' ? 'F µmax' : 'µmax'}.</p>${zoomBarHtml(key)}`)}${paperHtml(C.svg)}</div>`;
@@ -3469,34 +3687,53 @@ const App = (() => {
     for (let i = 0; i <= 160; i++) { const t = t0 + (tEnd - t0) * i / 160; ts.push(t); ys.push(m.f(t - t0, f.p)); }
     return [ts, ys];
   }
-  function viewPanels() {
-    const D = st.D, V = st.V, cm = colorMap(), R = st.R;
-    const rd = dual() ? (V.panelRead || 'both') : 'od';
-    const panels = chartGroups().filter(g => !isHidden(g)).map(g => {
+  /* Panels: one per group, plus "combined" panels that overlay several groups (st.D.panelSets).
+     Every panel has a key: the group id, or "m:" + the combined panel's id.                  */
+  function panelWells(g, color, rd) {
+    const R = st.R, V = st.V;
+    return g.wells.filter(w => R.wells[w]).map(w => {
+      const r = R.wells[w];
+      let tangent = null;
+      if (V.panelFit === 'tangent' && r.mf && r.mf.muWin && Number.isFinite(r.params.mu) && r.params.source === 'mf') {
+        const a = r.mf.muWin.icpt, mu = r.mf.muWin.slope, lag = r.mf.lag, t2 = R.t[r.mf.muWin.i1] + 1.5;
+        const ts = [], ys = []; for (let i = 0; i <= 40; i++) { const t = lag + (t2 - lag) * i / 40; ts.push(t); ys.push(Math.exp(a + mu * t)); }
+        tangent = [ts, ys];
+      }
+      if (rd === 'fl') return { id: w, color, t: R.t, y: (r.fl ? r.fl.smooth : []).map(v => V.panelLog ? Math.max(v, R.fl.fMin) : v), excl: st.excluded.has(w), fit: null, tangent: null, group: g.name };
+      return { id: w, color, t: R.t, y: r.smooth.map(v => V.panelLog ? Math.max(v, st.S.floor) : v), excl: st.excluded.has(w),
+        fit: V.panelFit === 'none' || V.panelFit === 'tangent' ? null : fitCurveFor(r, V.panelFit), tangent,
+        y2: rd === 'both' && r.fl ? r.fl.smooth : null, group: g.name };
+    });
+  }
+  const panelGroups = () => st.groups.filter(g => (st.D.blanks || isSampleRole(g.role)) && st.R.groups[g.id] && st.R.groups[g.id].n);
+  const panelSets = () => (st.D.panelSets || []).map(ps => Object.assign({}, ps, { ids: ps.ids.filter(id => panelGroups().some(g => g.id === id)) })).filter(ps => ps.ids.length);
+  function panelItems(rd) {
+    const R = st.R, cm = colorMap(), V = st.V, show = V.panelShow || 'rest';
+    const sets = panelSets(), inSet = new Set(sets.flatMap(ps => ps.ids));
+    const items = sets.map(ps => {
+      const gs = ps.ids.map(groupById);
+      return { key: 'm:' + ps.id, label: ps.name, color: cm[gs[0].id], sub: '', legend: gs.map(g => ({ label: g.name, color: cm[g.id] })),
+        wells: gs.flatMap(g => panelWells(g, cm[g.id], rd)) };
+    });
+    for (const g of panelGroups()) {
+      if (!st.onlyIds && (isHidden(g) || show === 'combined' || (show === 'rest' && inSet.has(g.id)))) continue;
       const gr = R.groups[g.id], mu = gr.metrics.mu, fmu = gr.metrics.fmu;
       const sub = !isSampleRole(g.role) ? ROLES[g.role].toLowerCase()
         : rd === 'fl' ? (fmu && Number.isFinite(fmu.mean) ? `F µ ${fmt(fmu.mean, 2)} h⁻¹` : '')
         : (Number.isFinite(mu.mean) ? `µ ${fmt(mu.mean, 2)} h⁻¹` : '') + (rd === 'both' && fmu && Number.isFinite(fmu.mean) ? ` · F µ ${fmt(fmu.mean, 2)}` : '');
-      return {
-        id: g.id, label: g.name, color: cm[g.id], sub,
-        wells: g.wells.filter(w => R.wells[w]).map(w => {
-          const r = R.wells[w];
-          let tangent = null;
-          if (V.panelFit === 'tangent' && r.mf && r.mf.muWin && Number.isFinite(r.params.mu) && r.params.source === 'mf') {
-            const a = r.mf.muWin.icpt, mu = r.mf.muWin.slope, lag = r.mf.lag, t2 = R.t[r.mf.muWin.i1] + 1.5;
-            const ts = [], ys = []; for (let i = 0; i <= 40; i++) { const t = lag + (t2 - lag) * i / 40; ts.push(t); ys.push(Math.exp(a + mu * t)); }
-            tangent = [ts, ys];
-          }
-          if (rd === 'fl') return { id: w, t: R.t, y: (r.fl ? r.fl.smooth : []).map(v => V.panelLog ? Math.max(v, R.fl.fMin) : v), excl: st.excluded.has(w), fit: null, tangent: null };
-          return { id: w, t: R.t, y: r.smooth.map(v => V.panelLog ? Math.max(v, st.S.floor) : v), excl: st.excluded.has(w),
-            fit: V.panelFit === 'none' || V.panelFit === 'tangent' ? null : fitCurveFor(r, V.panelFit), tangent,
-            y2: rd === 'both' && r.fl ? r.fl.smooth : null };
-        }),
-      };
-    });
-    const C = Charts.panels({ panels, W: Math.max(D.w, 600), cols: V.panelCols || 0, ylog: V.panelLog, logFloor: rd === 'fl' ? R.fl.fMin : st.S.floor, xlab: D.xlab,
-      ylab: rd === 'fl' ? 'F (RFU)' : 'OD', y2lab: 'F (RFU), dashed', title: D.title,
+      items.push({ key: g.id, label: g.name, color: cm[g.id], sub, wells: panelWells(g, null, rd) });
+    }
+    return st.onlyIds ? items.filter(it => st.onlyIds.has(it.key)) : items;
+  }
+  function viewPanels() {
+    const D = st.D, V = st.V, R = st.R;
+    const rd = dual() ? (V.panelRead || 'both') : 'od';
+    const panels = panelItems(rd);
+    const L = axes('panels:' + rd, [['title', 'Chart title', D.title], ['x', 'X axis', D.xlab], ['y', 'Y axis', rd === 'fl' ? 'F (RFU)' : 'OD'], ...(rd === 'both' ? [['y2', 'Right Y axis', 'F (RFU), dashed']] : [])]);
+    const C = Charts.panels({ ...textStyle(), panels, W: Math.max(D.w, 600), cols: V.panelCols || 0, ylog: V.panelLog, logFloor: rd === 'fl' ? R.fl.fMin : st.S.floor, xlab: L.x,
+      ylab: L.y, y2lab: L.y2, title: L.title,
       fsAxis: D.fsAxis, fsTick: D.fsTick, lw: Math.max(1, D.lw * 0.75), ps: Math.max(1.5, D.ps), ymin: D.ymin, ymax: D.ymax });
+    const nSets = panelSets().length;
     $('view').innerHTML = `<div class="card"><div class="toolbar">
       ${dual() ? `<label class="fld"><span>Read</span><select id="pRead"><option value="both">OD + fluorescence</option><option value="od">OD</option><option value="fl">Fluorescence</option></select></label>` : ''}
       <label class="fld"><span>Overlay</span><select id="pFit">
@@ -3504,19 +3741,89 @@ const App = (() => {
         ${Models.list.filter(m => st.S.models[m.id]).map(m => `<option value="${m.id}">${m.name} fit</option>`).join('')}
         <option value="tangent">µmax tangent (model-free)</option><option value="none">Data only</option></select></label>
       <label class="fld"><span>Y axis</span><select id="pLog"><option value="0">Linear</option><option value="1">Log scale</option></select></label>
-      <button class="btn small" id="chartSave" title="Save chosen panels, as one figure or one file per group">Save panels…</button>${showAllBtn()}
-      <label class="fld"><span>Columns</span><select id="pCols"><option value="0">Auto</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
-      <div class="grow"></div><span class="status">Points are readings, lines are fits. Click a point to exclude or include that well.</span></div>
+      <label class="fld"><span>Columns</span><select id="pCols"><option value="0">Auto</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
+      ${nSets ? `<label class="fld"><span>Show</span><select id="pShow"><option value="rest">Combined panels + the other groups</option><option value="combined">Combined panels only</option><option value="all">All panels (groups also on their own)</option></select></label>` : ''}
+      <button class="btn small" id="pCombine" title="Draw several groups together in one panel to compare them">Combine panels…</button>
+      <button class="btn small" id="chartSave" title="Save chosen panels, as one figure or one file per panel">Save panels…</button>
+      <button class="btn small" id="axEdit" title="Change the axis titles of this chart">Axis titles…</button>${showAllBtn()}
+      <div class="grow"></div><span class="status">Points are readings, lines are fits. Click a point to exclude or include that well.${nSets ? ` ${nSets} combined panel${nSets > 1 ? 's' : ''}.` : ''}</span></div>
       ${paperHtml(C.svg)}</div>`;
     $('pFit').value = V.panelFit; $('pLog').value = V.panelLog ? '1' : '0'; $('pCols').value = String(V.panelCols || 0);
     if ($('pRead')) { $('pRead').value = rd; $('pRead').onchange = e => { V.panelRead = e.target.value; render(); }; }
+    if ($('pShow')) { $('pShow').value = V.panelShow || 'rest'; $('pShow').onchange = e => { V.panelShow = e.target.value; render(); }; }
     $('pFit').onchange = e => { V.panelFit = e.target.value; render(); };
     $('pLog').onchange = e => { V.panelLog = e.target.value === '1'; render(); };
     $('pCols').onchange = e => { V.panelCols = +e.target.value; render(); };
+    $('pCombine').onclick = openCombineDialog;
     bindHits(C.hits, h => `<b>${h.well}</b> · ${esc(h.group)}<br>${fmt(h.t, 2)} h · ${rd === 'fl' ? 'F ' + fmt(h.v, 0) : 'OD ' + fmt(h.v, 3)}<br>${wellSummary(h.well)}<br><i>click to ${st.excluded.has(h.well) ? 'include' : 'exclude'}</i>`,
       h => { st.excluded.has(h.well) ? st.excluded.delete(h.well) : st.excluded.add(h.well); exclusionChanged(); });
     st.lastSvg = C.svg; st.lastName = 'curve_panels';
     st.lastTable = wellRows();
+  }
+  /* edit the axis titles of the chart on screen; size and bold apply to every chart */
+  function openAxisDialog(focus) {
+    const A = st.axisAuto; if (!A) return;
+    const D = st.D, cur = (D.axisTitles || {})[A.key] || {};
+    const bg = document.createElement('div'); bg.className = 'modal-bg';
+    bg.innerHTML = `<div class="modal" role="dialog" aria-label="Axis titles" style="max-width:620px">
+      <h3>Axis titles and ticks</h3>
+      <p class="note">These titles are kept for this chart only (this tab, view and parameter). Leave a box empty to show no title; "Automatic" puts back the title Sigmoid writes.</p>
+      <div style="display:grid;gap:8px;margin:10px 0">${A.list.map(([a, what, auto]) => `<label class="fld"><span>${esc(what)}</span>
+        <div style="display:flex;gap:6px"><input type="text" data-ax="${a}" value="${esc(cur[a] != null ? cur[a] : auto)}" style="flex:1"><button class="btn small ghost" data-auto="${a}" title="${esc(auto || '(none)')}">Automatic</button></div></label>`).join('')}</div>
+      <div class="row3"><label class="fld"><span>Axis title size (pt)</span><input type="number" id="axFs" min="7" max="30" value="${D.fsAxis}"></label>
+        <label class="fld"><span>Tick label size (pt)</span><input type="number" id="axFt" min="6" max="28" value="${D.fsTick}"></label>
+        <label class="fld"><span>Chart title size (pt)</span><input type="number" id="axFh" min="8" max="36" value="${D.fsTitle}"></label></div>
+      <div style="display:flex;gap:18px;margin-top:8px"><label class="chk"><input type="checkbox" id="axBold" ${D.boldAxis ? 'checked' : ''}> Axis titles bold</label>
+        <label class="chk"><input type="checkbox" id="axTickBold" ${D.boldTick ? 'checked' : ''}> Tick labels bold</label></div>
+      <div style="display:flex;gap:18px;margin-top:6px"><label class="chk"><input type="checkbox" id="axMinX" ${D.minorX ? 'checked' : ''}> Minor ticks on X axis</label>
+        <label class="chk"><input type="checkbox" id="axMinY" ${D.minorY ? 'checked' : ''}> Minor ticks on Y axis</label></div>
+      <div class="foot"><button class="btn" id="axCancel">Cancel</button><button class="btn primary" id="axOk">Apply</button></div></div>`;
+    document.body.appendChild(bg);
+    const close = () => bg.remove();
+    const autoOf = a => (A.list.find(x => x[0] === a) || [])[2] || '';
+    bg.querySelectorAll('[data-auto]').forEach(b => b.onclick = () => { bg.querySelector(`[data-ax="${b.dataset.auto}"]`).value = autoOf(b.dataset.auto); });
+    const f = bg.querySelector(`[data-ax="${focus}"]`) || bg.querySelector('[data-ax]'); if (f) { f.focus(); f.select(); }
+    $('axCancel').onclick = close; bg.addEventListener('click', e => { if (e.target === bg) close(); });
+    const num = (id, lo, hi, dflt) => { const v = +$(id).value; return Number.isFinite(v) && $(id).value !== '' ? Math.max(lo, Math.min(hi, v)) : dflt; };
+    const apply = () => {
+      const o = {};
+      bg.querySelectorAll('[data-ax]').forEach(i => { if (i.value !== autoOf(i.dataset.ax)) o[i.dataset.ax] = i.value; });
+      const all = Object.assign({}, D.axisTitles || {}); if (Object.keys(o).length) all[A.key] = o; else delete all[A.key];
+      D.axisTitles = all;
+      D.fsAxis = num('axFs', 7, 30, D.fsAxis); D.fsTick = num('axFt', 6, 28, D.fsTick); D.fsTitle = num('axFh', 8, 36, D.fsTitle);
+      D.boldAxis = $('axBold').checked; D.boldTick = $('axTickBold').checked; D.minorX = $('axMinX').checked; D.minorY = $('axMinY').checked;
+      close(); writeInputs(); render();
+    };
+    $('axOk').onclick = apply;
+    bg.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') apply(); });
+  }
+  /* choose groups to draw together in one panel */
+  function openCombineDialog() {
+    const gs = panelGroups(), cm = colorMap(), sets = panelSets();
+    const bg = document.createElement('div'); bg.className = 'modal-bg';
+    bg.innerHTML = `<div class="modal" role="dialog" aria-label="Combine panels">
+      <h3>Combine panels</h3>
+      <p class="note">Tick the groups to draw together in one panel, each in its own colour. Make as many combined panels as you like; they are saved with the project.</p>
+      <div class="toolbar" style="margin:8px 0"><input type="text" id="cbName" placeholder="Name of the combined panel, e.g. WT vs ΔmutA" style="padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel);min-width:260px;flex:1">
+        <input type="text" id="cbFilter" placeholder="Filter names…" style="padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel);min-width:140px"></div>
+      <div id="cbList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px 12px;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px">
+        ${gs.map(g => `<label class="chk" data-name="${esc(g.name.toLowerCase())}"><input type="checkbox" value="${g.id}"><span class="dot" style="background:${cm[g.id]}"></span>${esc(g.name)}</label>`).join('')}
+      </div>
+      ${sets.length ? `<h3 style="margin-top:14px">Combined panels</h3><div class="groups">${sets.map(ps => `<div class="toolbar" style="margin:0"><b>${esc(ps.name)}</b><span class="note">${ps.ids.map(id => esc((groupById(id) || {}).name || '')).join(', ')}</span><div class="grow"></div><button class="btn small danger" data-rm="${ps.id}">Remove</button></div>`).join('')}</div>` : ''}
+      <div class="foot"><button class="btn" id="cbClose">Close</button><button class="btn primary" id="cbOk" disabled>Combine selected</button></div></div>`;
+    document.body.appendChild(bg);
+    const close = () => bg.remove();
+    const picked = () => [...bg.querySelectorAll('#cbList input:checked')].map(b => b.value);
+    bg.querySelector('#cbList').addEventListener('change', () => { $('cbOk').disabled = picked().length < 2; });
+    $('cbFilter').oninput = e => { const q = e.target.value.toLowerCase(); bg.querySelectorAll('#cbList label').forEach(l => { l.hidden = q && !l.dataset.name.includes(q); }); };
+    $('cbClose').onclick = close; bg.addEventListener('click', e => { if (e.target === bg) close(); });
+    bg.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { st.D.panelSets = (st.D.panelSets || []).filter(ps => ps.id !== b.dataset.rm); close(); render(); });
+    $('cbOk').onclick = () => {
+      const ids = picked(); if (ids.length < 2) return;
+      const name = $('cbName').value.trim() || ids.map(id => groupById(id).name).join(' + ');
+      st.D.panelSets = [...(st.D.panelSets || []), { id: 'p' + Date.now().toString(36), name, ids }];
+      close(); render(); flash(`Combined panel "${name}" added.`);
+    };
   }
   function wellSummary(w) {
     const r = st.R.wells[w]; if (!r || !r.params) return '';
@@ -3602,7 +3909,9 @@ const App = (() => {
     const errNote = D.err !== 'none' && items.some(i => i.n > 1) ? 'bars: mean ' + Charts.ERR_LABEL[D.err] : '';
     const note = ref ? (testable ? `Welch t-test vs ${ref.name}, Holm-adjusted` : `Reference: ${ref.name} · too few replicate wells for significance tests`) + (errNote ? ' · ' + errNote : '') : errNote;
     const relWarn = rel !== r2 ? `<div class="msg warn" style="margin:0 0 8px">${esc(ref.name)} has no usable ${esc(md.label)} value (${Number.isFinite(refMean) ? 'it is 0' : 'not determined'}), so values relative to it cannot be calculated. Absolute values are shown instead.</div>` : '';
-    const C = Charts.bars({ items, W: D.w, H: D.h, type: V.barType, showPoints: V.barPoints, ylab, title: D.title, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg,
+    const L = axes(`bars:${mk}:${r2}`, [['title', 'Chart title', D.title], ['y', 'Y axis', ylab], ['x', 'X axis (below the group names)', '']]);
+    const barStyle = { fill: D.barFill, color: D.barColor, opacity: D.barOpacity, outline: D.barOutline, olw: D.barLW, width: D.barWidth, errColor: D.barErr, points: D.barPts };
+    const C = Charts.bars({ ...textStyle(), barStyle, items, W: D.w, H: D.h, type: V.barType, showPoints: V.barPoints, ylab: L.y, xlab: L.x, title: L.title, fsAxis: D.fsAxis, fsTick: D.fsTick, fsLeg: D.fsLeg,
       ps: Math.max(2, D.ps), note, ymin: r2 === 'abs' ? D.ymin : null, ymax: r2 === 'abs' ? D.ymax : null, refLine: r2 !== 'abs' ? REL[r2].line : (ref ? refMean : NaN) });
     const src = st.S.source === 'mf' ? 'model-free' : st.S.source === 'best' ? 'best model per well' : Models.byId[st.S.source].name + ' fit';
     $('view').innerHTML = `<div class="card"><div class="toolbar">
@@ -3611,9 +3920,32 @@ const App = (() => {
       <label class="fld"><span>Reference</span><select id="bRef">${refOptions(V.ref).replace('(no comparison)', '(none)')}</select></label>
       <label class="fld"><span>Show values as</span><select id="bRel" ${ref ? '' : 'disabled title="Choose a reference first"'}>${Object.entries(REL).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('')}</select></label>
       <label class="chk"><input type="checkbox" id="bPts" ${V.barPoints ? 'checked' : ''}> Replicate points</label>
-      <button class="btn small" id="chartSave" title="Save the chart for chosen groups">Save charts…</button>${showAllBtn(true)}
+      <button class="btn small" id="chartSave" title="Save the chart for chosen groups">Save charts…</button>
+      <button class="btn small" id="axEdit" title="Change the axis titles of this chart">Axis titles…</button>${showAllBtn(true)}
       <div class="grow"></div><span class="status">${esc(md.help)} · µ/lag from ${src}${ref ? ` · dashed line = ${r2 === 'abs' ? 'reference value' : r2 === 'pct' ? '100%' : r2 === 'ratio' ? '1×' : 'no difference'}` : ''}</span></div>
+      <details class="stylebox" id="barStyleBox" ${V.barStyleOpen ? 'open' : ''}><summary>Bar style</summary><div class="toolbar" style="margin:8px 0 2px">
+        <label class="fld"><span>Fill</span><select data-d="barFill"><option value="group">Group colours</option><option value="single">One colour for all</option><option value="grey">Grey</option><option value="none">No fill (outline only)</option></select></label>
+        <label class="fld" style="min-width:0"><span>Colour</span><input type="color" data-d="barColor" value="${esc(D.barColor)}" ${D.barFill === 'single' ? '' : 'disabled title="Choose “One colour for all” first"'}></label>
+        <label class="fld" style="min-width:90px"><span>Fill strength</span><input type="range" data-d="barOpacity" min="0" max="1" step="0.05" value="${D.barOpacity}"></label>
+        <label class="fld"><span>Outline</span><select data-d="barOutline"><option value="same">Same as fill</option><option value="black">Black</option><option value="none">None</option></select></label>
+        <label class="fld" style="min-width:70px"><span>Outline width</span><input type="number" data-d="barLW" min="0" max="6" step="0.5" value="${D.barLW}"></label>
+        <label class="fld" style="min-width:100px"><span>Bar width</span><input type="range" data-d="barWidth" min="0.2" max="0.95" step="0.05" value="${D.barWidth}"></label>
+        <label class="fld" style="min-width:0"><span>Error bars</span><input type="color" data-d="barErr" value="${esc(D.barErr)}"></label>
+        <label class="fld"><span>Replicate points</span><select data-d="barPts"><option value="white">White</option><option value="group">Group colour</option><option value="black">Black</option></select></label>
+        <button class="btn small ghost" id="barStyleReset" title="Back to the standard bar style">Default style</button>
+      </div></details>
       ${relWarn}${paperHtml(C.svg)}</div>`;
+    const sb = $('barStyleBox');
+    sb.addEventListener('toggle', () => { V.barStyleOpen = sb.open; });
+    sb.querySelectorAll('[data-d]').forEach(el => {
+      if (el.tagName === 'SELECT') el.value = D[el.dataset.d];
+      // "change" fires when a slider is released or the colour picker closes, so the controls are not redrawn mid-drag
+      el.addEventListener('change', () => {
+        const k = el.dataset.d; D[k] = el.type === 'range' || el.type === 'number' ? Math.max(+el.min || 0, Math.min(+el.max || 99, +el.value || 0)) : el.value;
+        V.barStyleOpen = true; render();
+      });
+    });
+    $('barStyleReset').onclick = () => { V.barStyleOpen = true; for (const k of ['barFill', 'barColor', 'barOpacity', 'barOutline', 'barLW', 'barWidth', 'barErr', 'barPts']) D[k] = DEFAULT_DISPLAY[k]; render(); };
     $('bType').value = V.barType; $('bRel').value = rel;
     $('bMetric').onchange = e => { V.barMetric = e.target.value; render(); };
     $('bType').onchange = e => { V.barType = e.target.value; render(); };
@@ -3944,11 +4276,14 @@ const App = (() => {
   function openSaveDialog() {
     const tab = st.V.tab;
     if (!CHART_TABS[tab] || !st.R) { flash('Open the Curves, Panels, Growth rate or Parameters tab first, then choose Save charts.'); return; }
-    const list = (tab === 'bars' ? sampleGroupsWithData() : chartGroups());
+    // Panels: every panel shown (combined panels and groups); other tabs: the groups
+    const list = tab === 'panels' ? panelItems(dual() ? (st.V.panelRead || 'both') : 'od').map(it => ({ id: it.key, name: it.label + (it.legend ? ' (combined)' : ''), hidden: false }))
+      : (tab === 'bars' ? sampleGroupsWithData() : chartGroups());
+    const what = tab === 'panels' ? 'panel' : 'group';
     const bg = document.createElement('div'); bg.className = 'modal-bg';
     bg.innerHTML = `<div class="modal" role="dialog" aria-label="Save charts">
       <h3>Save charts from the ${CHART_TABS[tab]} tab</h3>
-      <p class="note">Pick the groups to include. The chart uses your current settings on this tab (view, axis, colours, size).</p>
+      <p class="note">Pick the ${what}s to include. The chart uses your current settings on this tab (view, axis, colours, size).</p>
       <div class="toolbar" style="margin:8px 0">
         <input type="text" id="svFilter" placeholder="Filter names…" style="padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel);min-width:180px">
         <button class="btn small" id="svAll">Select all</button><button class="btn small" id="svNone">Select none</button>
@@ -3959,8 +4294,8 @@ const App = (() => {
       </div>
       <div class="row2" style="margin-top:12px">
         <div class="fld"><span>Save as</span>
-          <label class="chk"><input type="radio" name="svMode" value="one" checked> One figure with all selected groups</label>
-          <label class="chk"><input type="radio" name="svMode" value="each" ${tab === 'bars' ? 'disabled' : ''}> A separate figure for each group (.zip)</label>
+          <label class="chk"><input type="radio" name="svMode" value="one" checked> One figure with all selected ${what}s</label>
+          <label class="chk"><input type="radio" name="svMode" value="each" ${tab === 'bars' ? 'disabled' : ''}> A separate figure for each ${what} (.zip)</label>
         </div>
         <div class="fld"><span>Format</span>
           <label class="chk"><input type="radio" name="svFmt" value="svg" checked> SVG (vector, editable)</label>
@@ -3995,7 +4330,8 @@ const App = (() => {
       if (mode === 'one') out.push(draw(new Set(ids)));
       else {
         if (tab === 'panels') { st.V.panelCols = 1; st.D.w = 460; }
-        for (const id of ids) { const r = draw(new Set([id])); out.push({ svg: r.svg, name: r.name + '_' + safeName((groupById(id) || {}).name) }); }
+        const nameOf = id => /^m:/.test(id) ? ((st.D.panelSets || []).find(ps => 'm:' + ps.id === id) || {}).name : (groupById(id) || {}).name;
+        for (const id of ids) { const r = draw(new Set([id])); out.push({ svg: r.svg, name: r.name + '_' + safeName(nameOf(id)) }); }
       }
     } finally {
       st.onlyIds = null; st.V.panelCols = keep.cols; st.D.w = keep.w; render(); hist.lock = false;
@@ -4165,7 +4501,11 @@ const App = (() => {
   }
   function init() {
     try { const th = localStorage.getItem('gs-theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) { }
-    writeInputs(); bindSettings();
+    sessions.push(newSession()); curSess = sessions[0];
+    // Before any click, key or change is handled, store a snapshot that is still waiting, so a change
+    // made right after the previous one gets its own Undo step instead of being merged with it.
+    for (const ev of ['change', 'mousedown', 'keydown', 'touchstart']) document.addEventListener(ev, () => { if (hist.timer) recordNow(); }, true);
+    writeInputs(); bindSettings(); bindSessionTabs(); renderSessionTabs();
     // keep the tab bar just under the top bar while scrolling (the top bar can wrap to two lines)
     const tb = document.querySelector('.topbar');
     const setTb = () => document.documentElement.style.setProperty('--tb', tb.offsetHeight + 'px');
@@ -4201,7 +4541,7 @@ const App = (() => {
     render();
     recordNow();
   }
-  return { init, st, loadFile, loadDemo };
+  return { init, st, loadFile, loadDemo, sessions: () => sessions.map(s => ({ name: sessName(s), current: s === curSess, data: sessHasData(s) })) };
 })();
 
 App.init();
