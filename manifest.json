@@ -1,5 +1,5 @@
 {
-  "id": "./",
+  "id": "/sigmoid",
   "name": "Sigmoid: Bacterial Growth Analysis",
   "short_name": "Sigmoid",
   "description": "Plate-reader growth curve analysis (OD and fluorescence) that runs entirely in the browser.",
