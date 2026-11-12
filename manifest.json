@@ -21,8 +21,7 @@
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
         "text/csv": [".csv"],
         "text/tab-separated-values": [".tsv"],
-        "text/plain": [".txt"],
-        "application/json": [".json"]
+        "text/plain": [".txt"]
       }
     }
   ]
